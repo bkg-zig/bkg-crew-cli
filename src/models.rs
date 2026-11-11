@@ -26,6 +26,12 @@ pub struct ModelEntry {
     /// Model ID for Cursor CLI.
     #[serde(default)]
     pub cursor: Option<String>,
+    /// Model ID for Pi CLI.
+    #[serde(default)]
+    pub pi: Option<String>,
+    /// Model ID for GitHub Copilot CLI.
+    #[serde(default)]
+    pub copilot: Option<String>,
 }
 
 impl ModelEntry {
@@ -36,6 +42,8 @@ impl ModelEntry {
             AgentKind::Codex => self.codex.as_deref(),
             AgentKind::OpenCode => self.opencode.as_deref(),
             AgentKind::Cursor => self.cursor.as_deref(),
+            AgentKind::Pi => self.pi.as_deref(),
+            AgentKind::Copilot => self.copilot.as_deref(),
         }
     }
 
@@ -53,6 +61,12 @@ impl ModelEntry {
         }
         if self.cursor.is_some() {
             agents.push(AgentKind::Cursor);
+        }
+        if self.pi.is_some() {
+            agents.push(AgentKind::Pi);
+        }
+        if self.copilot.is_some() {
+            agents.push(AgentKind::Copilot);
         }
         agents
     }

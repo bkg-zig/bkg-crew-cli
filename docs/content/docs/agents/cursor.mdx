@@ -1,6 +1,6 @@
 ---
 title: Cursor
-description: Using Cursor's headless agent with harness — flags, output format, and event mapping
+description: Using Cursor's headless agent with bkgcrewcli — flags, output format, and event mapping
 ---
 
 Cursor's headless agent provides a Claude Code-compatible interface for non-interactive coding tasks.
@@ -23,9 +23,9 @@ cursor-agent -p --output-format stream-json "explain this codebase"
 
 Note: the prompt is a positional argument; `-p` enables headless mode.
 
-## How harness maps to Cursor
+## How bkgcrewcli maps to Cursor
 
-| harness | Cursor |
+| bkgcrewcli | Cursor |
 |---------|--------|
 | `PermissionMode::FullAccess` | `--force` |
 | `PermissionMode::ReadOnly` | `--mode plan` |
@@ -120,7 +120,7 @@ Tool calls are nested under keys following the `*ToolCall` pattern: `readToolCal
 
 ## Event mapping
 
-| Cursor event | harness event |
+| Cursor event | bkgcrewcli event |
 |--------------|---------------|
 | `system` (init) | `SessionStart` |
 | `assistant` | `Message` (role: Assistant) |
@@ -131,7 +131,7 @@ Tool calls are nested under keys following the `*ToolCall` pattern: `readToolCal
 
 ## Binary candidates
 
-Harness searches for the Cursor binary in this order:
+bkgcrewcli searches for the Cursor binary in this order:
 1. `cursor-agent` (preferred)
 2. `agent` (fallback)
 

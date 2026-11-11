@@ -1,6 +1,6 @@
 [package]
 name = "bkgcrewcli"
-version = "0.1.6"
+version = "0.1.8"
 edition = "2021"
 description = "Unified CLI to run Claude Code, OpenCode, Codex, or Cursor from a single interface"
 license = "MIT"
@@ -48,6 +48,9 @@ rand = "0.9"
 zeroize = "1.7"
 # HTTP client for custom providers
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+# Web UI server
+axum = { version = "0.7", features = ["macros", "ws"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 
 [dev-dependencies]
 assert_cmd = "2"

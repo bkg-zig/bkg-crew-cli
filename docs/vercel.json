@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/install.sh",
-      "destination": "https://raw.githubusercontent.com/ayshptk/harness-cli/main/install.sh"
+      "destination": "https://raw.githubusercontent.com/ayshptk/bkgcrewcli-cli/main/install.sh"
     }
   ]
 }

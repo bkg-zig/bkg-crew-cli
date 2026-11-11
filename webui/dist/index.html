@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>bkgcrewcli · Gateway Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23050505'/%3E%3Cpath d='M16 5 L27 16 L16 27 L5 16 Z' fill='none' stroke='%2300e5ff' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23b06cff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand" id="brand" title="Übersicht">◆</div>
+    <nav class="rail-dots" id="railDots"></nav>
+    <div class="rail-foot">BKGCREWCLI</div>
+  </aside>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">Gateway Console</div>
+    <nav id="sidebarNav"></nav>
+  </aside>
+
+  <header class="topbar">
+    <button class="burger" id="burger" title="Navigation">≡</button>
+    <div class="crumb" id="crumb"></div>
+    <span class="top-spacer"></span>
+    <span class="health-pill ac-mint" id="healthPill"><i></i><span class="txt">live</span></span>
+    <div class="token-box">
+      <input id="tokenInput" type="password" placeholder="Admin-Token 🔒" autocomplete="off">
+      <button id="tokenApply" class="btn mini solid ac-gold">→</button>
+    </div>
+  </header>
+
+  <main class="content ac-cyan" id="page"></main>
+</div>
+
+<div class="side-scrim" id="scrim"></div>
+<div id="toasts"></div>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>

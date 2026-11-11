@@ -26,7 +26,7 @@ pub fn parse_key_value(s: &str) -> Result<(String, String), String> {
 #[command(
     name = "bkgcrewcli",
     about = "Unified coding agent bkgcrewcli",
-    long_about = "Run Claude Code, OpenCode, Codex, or Cursor from a single CLI interface.\n\n\
+    long_about = "Run Claude Code, OpenCode, Codex, Cursor, Pi, or Copilot from a single CLI interface.\n\n\
                   Outputs NDJSON/text/JSON/markdown to stdout.",
     version
 )]
@@ -40,7 +40,7 @@ struct Cli {
 enum Commands {
     /// Run a task on a coding agent.
     Run {
-        /// Which agent to use: claude, opencode, codex, cursor (optional — auto-detects)
+        /// Which agent to use: claude, opencode, codex, cursor, pi, copilot (optional — auto-detects)
         #[arg(short, long)]
         agent: Option<String>,
 
@@ -118,7 +118,7 @@ enum Commands {
 
     /// Check if a specific agent is available.
     Check {
-        /// Agent to check: claude, opencode, codex, cursor
+        /// Agent to check: claude, opencode, codex, cursor, pi, copilot
         agent: String,
 
         /// Output as JSON
@@ -156,6 +156,20 @@ enum Commands {
     Provider {
         #[command(subcommand)]
         action: ProviderAction,
+    },
+    /// Start bkgcrewcli Web UI + API server (Dioxus webui/dist if built, else built-in UI).
+    Serve {
+        /// Host/interface to bind (default: 127.0.0.1)
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Port to listen on (default: 4142)
+        #[arg(long, default_value_t = 4142u16)]
+        port: u16,
+
+        /// Working directory / project context for the server
+        #[arg(long)]
+        cwd: Option<PathBuf>,
     },
 }
 
@@ -521,6 +535,11 @@ async fn main() -> ExitCode {
                 base_url: resolved_base_url,
                 env: std::collections::HashMap::new(),
                 extra_args: resolved_extra,
+                id: String::new(),
+                stack: "default".to_string(),
+                project: "default".to_string(),
+                timeout_seconds: resolved_timeout.unwrap_or(3600),
+                sandbox_config: None,
             };
 
             // Dry-run: show the resolved command and exit.
@@ -561,7 +580,7 @@ async fn main() -> ExitCode {
                     }
                 }
             } else if available.is_empty() {
-                println!("No agents found. Install one of: claude, opencode, codex, cursor-agent");
+                println!("No agents found. Install one of: claude, opencode, codex, cursor-agent, pi, copilot");
             } else {
                 println!("Available agents:");
                 for agent in &available {
@@ -779,6 +798,12 @@ async fn main() -> ExitCode {
                             if let Some(ref v) = entry.cursor {
                                 obj["cursor"] = serde_json::json!(v);
                             }
+                            if let Some(ref v) = entry.pi {
+                                obj["pi"] = serde_json::json!(v);
+                            }
+                            if let Some(ref v) = entry.copilot {
+                                obj["copilot"] = serde_json::json!(v);
+                            }
                             Some(obj)
                         })
                         .collect();
@@ -892,6 +917,90 @@ async fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
         },
+
+
+        Commands::Serve { host, port, cwd: serve_cwd } => {
+            let serve_root = serve_cwd
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("."));
+            let (pc, _pcp) = match ProjectConfig::load_with_path(&serve_root) {
+                Some((c, p)) => (Some(c), Some(p)),
+                None => (None, None),
+            };
+            let st = Settings::load_with_project(Some(&serve_root));
+            let registry = build_registry(pc.as_ref());
+            let plugins = bkgcrewcli::plugins::PluginManager::new();
+            plugins.load_from_env("bkgcrewcli-serve", port);
+            let base_state = std::sync::Arc::new(bkgcrewcli::server::ServerState {
+                cwd: serve_root.clone(),
+                project_config: pc,
+                settings: st,
+                registry,
+                plugins: plugins.clone(),
+                port,
+            });
+
+            // gateway: config, usage store, keystore (optional)
+            let mut gw_cfg = bkgcrewcli::server::gateway::GatewayConfig::load();
+            // env overrides (compat): merge if provided
+            if let Ok(v) = std::env::var("BKGCREWCLI_GATEWAY_API_KEYS") {
+                if let Ok(keys) = serde_json::from_str::<Vec<String>>(&v) { if !keys.is_empty() { gw_cfg.auth.api_keys = keys; } }
+            }
+            if let Ok(v) = std::env::var("BKGCREWCLI_MODEL_MAPPINGS") {
+                if let Ok(mm) = serde_json::from_str::<std::collections::HashMap<String,String>>(&v) { gw_cfg.model_mappings.extend(mm); }
+            }
+            gw_cfg.normalize_and_ensure_defaults();
+            let _ = gw_cfg.save();
+
+            let usage = std::sync::Arc::new(bkgcrewcli::server::gateway::usage::UsageStore::open_default().await);
+            let mut keystore = None;
+            let pass = std::env::var("BKG_KEYSTORE_PASSPHRASE").ok().filter(|s| !s.trim().is_empty()).or_else(|| {
+                for f in ["/srv/bkg/secrets/keystore/pass.key", "/srv/bkg/secrets/keystore/pass,keyx"] {
+                    if let Ok(v) = std::fs::read_to_string(f) { let t = v.trim().to_string(); if !t.is_empty() { return Some(t); } }
+                }
+                None
+            });
+            if let Some(pass) = pass {
+                match bkgcrewcli::keystore::Keystore::init(&pass).await {
+                    Ok(ks) => { eprintln!("[gateway] keystore loaded"); keystore = Some(std::sync::Arc::new(ks)); }
+                    Err(e) => eprintln!("[gateway] keystore init failed (provider proxy disabled): {e}"),
+                }
+            } else {
+                eprintln!("[gateway] BKG_KEYSTORE_PASSPHRASE not set; provider proxy disabled (set env or /srv/bkg/secrets/keystore/pass.key)");
+            }
+            let tokens = std::sync::Arc::new(bkgcrewcli::server::gateway::tokens::TokenStore::open_default().await);
+            let gw_state = bkgcrewcli::server::gateway::GatewayState {
+                base: base_state.clone(),
+                keystore,
+                usage,
+                tokens,
+                config: std::sync::Arc::new(tokio::sync::RwLock::new(gw_cfg)),
+            };
+            let app = bkgcrewcli::server::create_full_router(base_state, gw_state);
+
+            let addr = format!("{}:{}", host, port);
+            let listener = match tokio::net::TcpListener::bind(&addr).await {
+                Ok(l) => l,
+                Err(e) => { eprintln!("error: failed to bind {addr}: {e}"); return ExitCode::FAILURE; }
+            };
+            println!("bkgcrewcli web ui + gateway listening on http://{addr}");
+            println!("  cwd: {}", serve_root.display());
+            println!("  ui/api: / /api/health /api/agents /api/models /api/config /api/run");
+            println!("  gateway: /v1/models /v1/chat/completions /v1/messages /v1/messages/count_tokens /v1/responses /usage /api/gateway/config");
+            println!("  admin:   /admin/config /admin/config/model-mappings");
+            println!("  config:  {}", bkgcrewcli::server::gateway::GatewayConfig::path().display());
+            if serve_root.join("webui").join("dist").exists() {
+                println!("  ui: serving Dioxus build from webui/dist");
+            } else {
+                println!("  ui: built-in dashboard (build Dioxus webui for full UI)");
+            }
+            if let Err(e) = axum::serve(listener, app).await {
+                eprintln!("error: server failed: {e}");
+                return ExitCode::FAILURE;
+            }
+            plugins.shutdown();
+            ExitCode::SUCCESS
+        }
 
         Commands::Keystore { action } => {
             // Initialize keystore
@@ -1262,7 +1371,7 @@ fn resolve_agent(
     // 4. Auto-detect: if exactly one agent is installed, use it.
     let available = bkgcrewcli::available_agents();
     match available.len() {
-        0 => Err("no agent specified and none found in PATH. Install one of: claude, opencode, codex, cursor-agent".to_string()),
+        0 => Err("no agent specified and none found in PATH. Install one of: claude, opencode, codex, cursor-agent, pi, copilot".to_string()),
         1 => Ok(available[0]),
         _ => {
             let names: Vec<_> = available.iter().map(|a| a.default_binary()).collect();

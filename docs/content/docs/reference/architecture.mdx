@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How harness works internally — adapters, process management, and the event pipeline
+description: How bkgcrewcli works internally — adapters, process management, and the event pipeline
 ---
 
 ## Data flow
@@ -56,7 +56,7 @@ Model name → per-agent model ID mapping. Three layers merged in priority order
 
 ### SessionLogger
 
-Tees events to NDJSON files at `~/.local/share/harness/sessions/` with metadata sidecar files.
+Tees events to NDJSON files at `~/.local/share/bkgcrewcli/sessions/` with metadata sidecar files.
 
 ## Crate layout
 
@@ -72,7 +72,7 @@ src/
 ├── runner.rs        # AgentRunner trait + binary resolution
 ├── process.rs       # spawn_and_stream() + ChildGuard
 ├── normalize.rs     # Text normalization utilities
-├── settings.rs      # Config file support (harness.toml + legacy)
+├── settings.rs      # Config file support (bkgcrewcli.toml + legacy)
 ├── logger.rs        # Session NDJSON logging
 └── agents/
     ├── mod.rs       # create_runner() factory

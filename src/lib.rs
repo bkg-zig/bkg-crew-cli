@@ -1,5 +1,5 @@
-//! Unified coding agent bkgcrewcli — run Claude Code, OpenCode, Codex, or Cursor
-//! through a single Rust API.
+//! Unified coding agent bkgcrewcli — run Claude Code, OpenCode, Codex, Cursor, Pi, or Copilot
+//! through a single Rust interface.
 //!
 //! # Quick Start
 //!
@@ -9,59 +9,55 @@
 //! # #[tokio::main]
 //! # async fn main() -> bkgcrewcli::Result<()> {
 //! let config = TaskConfig::new("fix the bug", AgentKind::Claude);
-//! let mut stream = bkgcrewcli::run_task(&config).await?;
+//! let stream = bkgcrewcli::run_task(&config).await?;
 //! # Ok(())
 //! # }
 //! ```
 
 pub mod agents;
+pub mod cognition;
 pub mod config;
 pub mod error;
 pub mod event;
 pub mod keystore;
 pub mod logger;
+pub mod mender;
 pub mod models;
-pub mod normalize;
 pub mod process;
+pub mod plugins;
 pub mod providers;
 pub mod registry;
 pub mod runner;
+pub mod sandbox;
+pub mod server;
 pub mod settings;
+pub mod task_queue;
+pub mod vault;
 
-pub use config::{AgentKind, OutputFormat, PermissionMode, TaskConfig, TaskConfigBuilder};
+pub use config::{AgentKind, OutputFormat, PermissionMode, TaskConfig, TaskConfigBuilder, SandboxConfig};
 pub use error::{Error, Result};
-pub use event::{Event, UsageData};
-pub use keystore::{ApiKeyEntry, Keystore, ProviderConfig, init_keystore};
+pub use event::Event;
+pub use keystore::{ApiKeyEntry, Keystore, ProviderConfig, ProviderUpdate, init_keystore};
 pub use models::{ModelEntry, ModelRegistry, ModelResolution};
-pub use normalize::NormalizeConfig;
 pub use process::StreamHandle;
 pub use providers::{ApiClient, ChatRequest, ChatResponse, Provider, ProviderFactory};
-pub use runner::{AgentCapabilities, AgentRunner, EventStream};
+pub use runner::{AgentRunner, AgentCapabilities, EventStream};
 
-/// Re-export the cancel token type for convenience.
 pub use tokio_util::sync::CancellationToken;
 
-/// Create a runner for the given agent kind and execute the task, returning
-/// a stream of unified events.
-///
-/// This is the simple API — for cancellation support, use `run_task_with_cancel`.
+/// Run a task and return an event stream.
 pub async fn run_task(config: &TaskConfig) -> Result<EventStream> {
     let handle = run_task_with_cancel(config, None).await?;
     Ok(handle.stream)
 }
 
-/// Run a task with an optional cancellation token.
-///
-/// Returns a `StreamHandle` containing the event stream and the cancel token.
-/// If no token is provided, a new one is created internally.
+/// Run a task with optional cancellation token.
 pub async fn run_task_with_cancel(
     config: &TaskConfig,
-    cancel_token: Option<tokio_util::sync::CancellationToken>,
+    cancel_token: Option<CancellationToken>,
 ) -> Result<StreamHandle> {
-    let runner = agents::create_runner(config.agent);
+    let runner = create_runner(config.agent);
 
-    // If the user provided a custom binary path, skip the availability check
-    // (the path will be validated at spawn time). Otherwise, check PATH.
     if config.binary_path.is_none() && !runner.is_available() {
         return Err(Error::BinaryNotFound {
             agent: config.agent.display_name().to_string(),
@@ -69,30 +65,49 @@ pub async fn run_task_with_cancel(
         });
     }
 
-    let mut handle = runner.run(config, cancel_token).await?;
-
-    let norm_config = NormalizeConfig {
-        cwd: config
-            .cwd
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .or_else(|| std::env::current_dir().ok().map(|p| p.display().to_string())),
-        model: config.model.clone(),
-        prompt: Some(config.prompt.clone()),
-    };
-    handle.stream = normalize::normalize_stream(handle.stream, norm_config);
-
-    Ok(handle)
+    runner.run(config, cancel_token).await
 }
 
-/// List which agents are currently available on this system.
+/// Create the appropriate runner for the given agent kind.
+pub fn create_runner(kind: AgentKind) -> Box<dyn AgentRunner> {
+    match kind {
+        AgentKind::Claude => Box::new(crate::agents::claude::ClaudeRunner),
+        AgentKind::OpenCode => Box::new(crate::agents::opencode::OpenCodeRunner),
+        AgentKind::Codex => Box::new(crate::agents::codex::CodexRunner),
+        AgentKind::Cursor => Box::new(crate::agents::cursor::CursorRunner),
+        AgentKind::Pi => Box::new(crate::agents::pi::PiRunner),
+        AgentKind::Copilot => Box::new(crate::agents::copilot::CopilotRunner),
+    }
+}
+
+/// List which agents are currently available.
 pub fn available_agents() -> Vec<AgentKind> {
-    use AgentKind::*;
-    [Claude, OpenCode, Codex, Cursor]
-        .into_iter()
-        .filter(|kind| {
-            let runner = agents::create_runner(*kind);
-            runner.is_available()
-        })
-        .collect()
+    [
+        AgentKind::Claude,
+        AgentKind::OpenCode,
+        AgentKind::Codex,
+        AgentKind::Cursor,
+        AgentKind::Pi,
+        AgentKind::Copilot,
+    ]
+    .into_iter()
+    .filter(|kind| create_runner(*kind).is_available())
+    .collect()
+}
+
+/// All supported agent kinds.
+pub fn all_agents() -> Vec<AgentKind> {
+    vec![
+        AgentKind::Claude,
+        AgentKind::OpenCode,
+        AgentKind::Codex,
+        AgentKind::Cursor,
+        AgentKind::Pi,
+        AgentKind::Copilot,
+    ]
+}
+
+/// Returns a simple "Hello, world!" greeting.
+pub fn hello_world() -> &'static str {
+    "Hello, world!"
 }

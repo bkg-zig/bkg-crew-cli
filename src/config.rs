@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
-/// Which coding agent backend to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentKind {
@@ -11,44 +9,70 @@ pub enum AgentKind {
     OpenCode,
     Codex,
     Cursor,
+    Pi,
+    Copilot,
 }
 
 impl AgentKind {
-    /// Default binary name for this agent (first in the candidates list).
     pub fn default_binary(&self) -> &'static str {
         self.binary_candidates()[0]
     }
 
-    /// All known binary names for this agent, in priority order.
-    /// Different install methods / platforms may use different names.
     pub fn binary_candidates(&self) -> &'static [&'static str] {
         match self {
             AgentKind::Claude => &["claude"],
             AgentKind::OpenCode => &["opencode"],
             AgentKind::Codex => &["codex"],
-            // Cursor ships as "agent" on some installs, "cursor-agent" on others
             AgentKind::Cursor => &["cursor-agent", "agent"],
+            AgentKind::Pi => &["pi"],
+            AgentKind::Copilot => &["copilot", "github-copilot-cli"],
         }
     }
 
-    /// Environment variable names for API keys relevant to this agent.
     pub fn api_key_env_vars(&self) -> &'static [&'static str] {
         match self {
             AgentKind::Claude => &["ANTHROPIC_API_KEY"],
             AgentKind::Codex => &["OPENAI_API_KEY"],
             AgentKind::OpenCode => &["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
             AgentKind::Cursor => &["CURSOR_API_KEY"],
+            AgentKind::Pi => &["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"],
+            AgentKind::Copilot => &["GITHUB_TOKEN", "GH_TOKEN", "COPILOT_GITHUB_TOKEN"],
         }
     }
 
-    /// Environment variable name for the base URL (if the agent supports it).
     pub fn base_url_env_var(&self) -> Option<&'static str> {
         match self {
             AgentKind::Claude => Some("ANTHROPIC_BASE_URL"),
             AgentKind::Codex => Some("OPENAI_BASE_URL"),
             AgentKind::OpenCode => Some("OPENCODE_BASE_URL"),
             AgentKind::Cursor => None,
+            AgentKind::Pi => None,
+            AgentKind::Copilot => None,
         }
+    }
+
+    /// Stable machine name of the agent (bkgcrewcli-native).
+    pub fn id(&self) -> &'static str {
+        match self {
+            AgentKind::Claude => "claude",
+            AgentKind::OpenCode => "opencode",
+            AgentKind::Codex => "codex",
+            AgentKind::Cursor => "cursor",
+            AgentKind::Pi => "pi",
+            AgentKind::Copilot => "copilot",
+        }
+    }
+
+    /// All supported agent kinds.
+    pub fn all() -> Vec<AgentKind> {
+        vec![
+            AgentKind::Claude,
+            AgentKind::OpenCode,
+            AgentKind::Codex,
+            AgentKind::Cursor,
+            AgentKind::Pi,
+            AgentKind::Copilot,
+        ]
     }
 
     pub fn display_name(&self) -> &'static str {
@@ -57,6 +81,8 @@ impl AgentKind {
             AgentKind::OpenCode => "OpenCode",
             AgentKind::Codex => "Codex",
             AgentKind::Cursor => "Cursor",
+            AgentKind::Pi => "Pi",
+            AgentKind::Copilot => "GitHub Copilot CLI",
         }
     }
 }
@@ -72,116 +98,275 @@ impl std::str::FromStr for AgentKind {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "claude" | "claude-code" | "claude_code" => Ok(AgentKind::Claude),
-            "opencode" | "open-code" | "open_code" => Ok(AgentKind::OpenCode),
-            "codex" | "openai-codex" | "openai_codex" => Ok(AgentKind::Codex),
-            "cursor" | "cursor-agent" | "cursor_agent" => Ok(AgentKind::Cursor),
-            _ => Err(format!(
-                "unknown agent: `{s}` (expected: claude, opencode, codex, cursor)"
-            )),
+            "claude" | "claude-code" => Ok(AgentKind::Claude),
+            "opencode" | "open-code" => Ok(AgentKind::OpenCode),
+            "codex" | "openai-codex" => Ok(AgentKind::Codex),
+            "cursor" | "cursor-agent" => Ok(AgentKind::Cursor),
+            "pi" | "pi-coding-agent" => Ok(AgentKind::Pi),
+            "copilot" | "copilot-cli" | "github-copilot" | "gh-copilot" => Ok(AgentKind::Copilot),
+            _ => Err(format!("unknown agent: `{s}` (expected: claude, opencode, codex, cursor, pi, copilot)")),
         }
     }
 }
 
-/// How the agent should handle tool permission prompts.
-///
-/// Only two modes: full access (default — "yolo") or read-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PermissionMode {
-    /// Full access — auto-approve everything (yolo mode). This is the default.
     #[default]
     FullAccess,
-    /// Read-only / plan mode — the agent cannot make changes.
     ReadOnly,
 }
 
-/// Desired output format for the final result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OutputFormat {
-    /// Plain text — only the final assistant message.
     Text,
-    /// JSON — structured result object.
     Json,
-    /// NDJSON stream — one event per line as the run progresses.
     #[default]
     StreamJson,
-    /// Markdown — human-readable transcript with headings and code blocks.
     Markdown,
 }
 
-/// Unified task configuration — everything needed to run a task on any agent.
+// ============================================================================
+// Sandbox Configuration (bkgcrewcli naming: local | container | capsule)
+// ============================================================================
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TaskConfig {
-    /// The prompt / instruction to send to the agent.
-    pub prompt: String,
-
-    /// Which agent backend to use.
-    pub agent: AgentKind,
-
-    /// Working directory for the agent.
+pub struct SandboxConfig {
+    /// Enable sandboxed execution.
     #[serde(default)]
-    pub cwd: Option<PathBuf>,
-
-    /// Model override (e.g. "sonnet", "gpt-5-codex", "claude-opus-4-6").
+    pub enabled: bool,
+    /// Provider/mode: local, container, capsule (remote backend).
     #[serde(default)]
-    pub model: Option<String>,
-
-    /// How to handle tool approvals.
+    pub provider: SandboxProvider,
+    /// Stack/profile for image/template selection.
+    #[serde(default = "default_stack")]
+    pub stack: String,
+    /// Legacy alias kept for compatibility.
+    #[serde(default = "default_stack")]
+    pub default_stack: String,
+    /// Project/profile name.
+    #[serde(default = "default_project")]
+    pub project: String,
+    #[serde(default = "default_project")]
+    pub default_project: String,
+    /// Container runtime when provider=container.
     #[serde(default)]
-    pub permission_mode: PermissionMode,
-
-    /// Output format.
+    pub runtime: ContainerRuntime,
+    /// Legacy alias.
     #[serde(default)]
-    pub output_format: OutputFormat,
-
-    /// Maximum number of agentic turns before stopping.
+    pub container_engine: ContainerRuntime,
+    /// Pull image/template before run when applicable.
+    #[serde(default = "default_true")]
+    pub auto_pull: bool,
+    #[serde(default = "default_true")]
+    pub auto_pull_images: bool,
+    /// Stack -> container image map.
+    #[serde(default = "default_images")]
+    pub images: HashMap<String, String>,
+    /// Stack/project -> capsule template map or id.
     #[serde(default)]
-    pub max_turns: Option<u32>,
-
-    /// Maximum spend in USD before stopping.
+    pub templates: HashMap<String, String>,
+    /// Network isolation (container) / restricted egress where supported.
+    #[serde(default = "default_true")]
+    pub network_isolation: bool,
+    /// Extra devices for container runtime.
     #[serde(default)]
-    pub max_budget_usd: Option<f64>,
-
-    /// Timeout in seconds for the entire run.
+    pub devices: Vec<String>,
+    /// Capsule backend endpoint (e.g. https://host:port).
     #[serde(default)]
-    pub timeout_secs: Option<u64>,
-
-    /// Custom system prompt (replaces default).
+    pub capsule_endpoint: Option<String>,
+    /// Capsule API key (prefer env/keystore; optional inline).
     #[serde(default)]
-    pub system_prompt: Option<String>,
-
-    /// Custom system prompt to append to the default.
+    pub capsule_api_key: Option<String>,
+    /// Default capsule template id/name.
     #[serde(default)]
-    pub append_system_prompt: Option<String>,
-
-    /// Override the agent binary path.
-    #[serde(default)]
-    pub binary_path: Option<PathBuf>,
-
-    /// API key for the agent (e.g., ANTHROPIC_API_KEY for Claude).
-    /// If set, this will be passed as the appropriate environment variable.
-    #[serde(default)]
-    pub api_key: Option<String>,
-
-    /// Base URL for the agent's API (e.g., ANTHROPIC_BASE_URL for Claude).
-    /// If set, this will be passed as the appropriate environment variable.
-    #[serde(default)]
-    pub base_url: Option<String>,
-
-    /// Additional environment variables to set for the agent process.
+    pub capsule_template: Option<String>,
+    /// Default timeout seconds for sandbox/capsule operations.
+    #[serde(default = "default_capsule_timeout")]
+    pub capsule_timeout_secs: u64,
+    /// Extra environment variables injected into sandbox.
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Additional volume mounts (host:container or spec).
+    #[serde(default)]
+    pub volumes: Vec<String>,
+    /// Resource limits (best-effort).
+    #[serde(default)]
+    pub cpu_limit: Option<String>,
+    #[serde(default)]
+    pub memory_limit: Option<String>,
+}
 
-    /// Extra agent-specific flags passed through verbatim.
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: SandboxProvider::Local,
+            stack: default_stack(),
+            default_stack: default_stack(),
+            project: default_project(),
+            default_project: default_project(),
+            runtime: ContainerRuntime::Docker,
+            container_engine: ContainerRuntime::Docker,
+            auto_pull: true,
+            auto_pull_images: true,
+            images: default_images(),
+            templates: HashMap::new(),
+            network_isolation: true,
+            devices: Vec::new(),
+            capsule_endpoint: None,
+            capsule_api_key: None,
+            capsule_template: None,
+            capsule_timeout_secs: default_capsule_timeout(),
+            env: HashMap::new(),
+            volumes: Vec::new(),
+            cpu_limit: None,
+            memory_limit: None,
+        }
+    }
+}
+
+impl SandboxConfig {
+    pub fn effective_stack(&self) -> &str {
+        if self.stack.is_empty() { &self.default_stack } else { &self.stack }
+    }
+    pub fn effective_project(&self) -> &str {
+        if self.project.is_empty() { &self.default_project } else { &self.project }
+    }
+    pub fn effective_runtime(&self) -> ContainerRuntime { self.runtime }
+}
+
+fn default_stack() -> String { "default".to_string() }
+fn default_project() -> String { "default".to_string() }
+fn default_true() -> bool { true }
+fn default_capsule_timeout() -> u64 { 300 }
+
+fn default_images() -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    m.insert("default".to_string(), "bkgcrewcli/agent-base:latest".to_string());
+    m.insert("rust".to_string(), "bkgcrewcli/agent-rust:latest".to_string());
+    m.insert("python".to_string(), "bkgcrewcli/agent-python:latest".to_string());
+    m.insert("node".to_string(), "bkgcrewcli/agent-node:latest".to_string());
+    m.insert("go".to_string(), "bkgcrewcli/agent-go:latest".to_string());
+    m
+}
+
+/// Sandbox execution provider (bkgcrewcli naming).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxProvider {
+    #[default]
+    Local,
+    Container,
+    Capsule,
+}
+
+impl std::str::FromStr for SandboxProvider {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "local" | "none" | "direct" => Ok(Self::Local),
+            "container" | "docker" | "podman" => Ok(Self::Container),
+            "capsule" | "remote" | "microvm" => Ok(Self::Capsule),
+            _ => Err(format!("unknown sandbox provider: {s} (expected: local, container, capsule)")),
+        }
+    }
+}
+
+/// Container runtime for provider=container.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ContainerRuntime {
+    #[default]
+    Docker,
+    Podman,
+}
+
+/// Legacy alias for backward compatibility.
+pub type ContainerEngine = ContainerRuntime;
+
+/// Legacy network mode for container sandbox (compat).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkMode {
+    #[default]
+    Bridge,
+    Host,
+    None,
+    Isolated,
+}
+
+/// Legacy sandbox network settings (compat).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SandboxNetwork {
+    #[serde(default)]
+    pub mode: NetworkMode,
+    #[serde(default)]
+    pub allow: Vec<String>,
+    #[serde(default)]
+    pub deny: Vec<String>,
+}
+
+// ============================================================================
+// Task Config
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskConfig {
+    #[serde(default = "generate_task_id")]
+    pub id: String,
+
+    pub prompt: String,
+    pub agent: AgentKind,
+
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub permission_mode: PermissionMode,
+    #[serde(default)]
+    pub output_format: OutputFormat,
+    #[serde(default)]
+    pub max_turns: Option<u32>,
+    #[serde(default)]
+    pub max_budget_usd: Option<f64>,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub append_system_prompt: Option<String>,
+    #[serde(default)]
+    pub binary_path: Option<PathBuf>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
     #[serde(default)]
     pub extra_args: Vec<String>,
+    #[serde(default)]
+    pub sandbox_config: Option<SandboxConfig>,
+    #[serde(default = "default_stack")]
+    pub stack: String,
+    #[serde(default = "default_project")]
+    pub project: String,
+    #[serde(default = "default_timeout_secs")]
+    pub timeout_seconds: u64,
 }
+
+fn generate_task_id() -> String {
+    format!("TASK-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"))
+}
+fn default_timeout_secs() -> u64 { 3600 }
 
 impl TaskConfig {
     pub fn new(prompt: impl Into<String>, agent: AgentKind) -> Self {
         Self {
+            id: generate_task_id(),
             prompt: prompt.into(),
             agent,
             cwd: None,
@@ -198,38 +383,25 @@ impl TaskConfig {
             base_url: None,
             env: HashMap::new(),
             extra_args: Vec::new(),
+            sandbox_config: None,
+            stack: default_stack(),
+            project: default_project(),
+            timeout_seconds: default_timeout_secs(),
         }
     }
 
-    /// Create a builder for `TaskConfig`.
     pub fn builder(prompt: impl Into<String>, agent: AgentKind) -> TaskConfigBuilder {
         TaskConfigBuilder::new(prompt, agent)
     }
 }
 
-/// Fluent builder for `TaskConfig`.
-///
-/// ```rust,no_run
-/// use bkgcrewcli::config::{AgentKind, TaskConfig};
-/// let config = TaskConfig::builder("fix the bug", AgentKind::Claude)
-///     .model("opus")
-///     .timeout_secs(60)
-///     .build();
-/// ```
 pub struct TaskConfigBuilder {
     config: TaskConfig,
 }
 
 impl TaskConfigBuilder {
     pub fn new(prompt: impl Into<String>, agent: AgentKind) -> Self {
-        Self {
-            config: TaskConfig::new(prompt, agent),
-        }
-    }
-
-    pub fn cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
-        self.config.cwd = Some(cwd.into());
-        self
+        Self { config: TaskConfig::new(prompt, agent) }
     }
 
     pub fn model(mut self, model: impl Into<String>) -> Self {
@@ -267,43 +439,8 @@ impl TaskConfigBuilder {
         self
     }
 
-    pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
-        self.config.system_prompt = Some(prompt.into());
-        self
-    }
-
-    pub fn append_system_prompt(mut self, prompt: impl Into<String>) -> Self {
-        self.config.append_system_prompt = Some(prompt.into());
-        self
-    }
-
-    pub fn binary_path(mut self, path: impl Into<PathBuf>) -> Self {
-        self.config.binary_path = Some(path.into());
-        self
-    }
-
-    pub fn api_key(mut self, key: impl Into<String>) -> Self {
-        self.config.api_key = Some(key.into());
-        self
-    }
-
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.config.base_url = Some(url.into());
-        self
-    }
-
-    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.config.env.insert(key.into(), value.into());
-        self
-    }
-
-    pub fn extra_arg(mut self, arg: impl Into<String>) -> Self {
-        self.config.extra_args.push(arg.into());
-        self
-    }
-
-    pub fn extra_args(mut self, args: Vec<String>) -> Self {
-        self.config.extra_args.extend(args);
+    pub fn sandbox(mut self) -> Self {
+        self.config.sandbox_config = Some(SandboxConfig::default());
         self
     }
 

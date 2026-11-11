@@ -1,14 +1,14 @@
 ---
 title: CLI Reference
-description: Complete reference for all harness commands and flags
+description: Complete reference for all bkgcrewcli commands and flags
 ---
 
-## harness run
+## bkgcrewcli run
 
 Run a coding agent task.
 
 ```
-harness run [OPTIONS] [--prompt <PROMPT> | --prompt-file <FILE>]
+bkgcrewcli run [OPTIONS] [--prompt <PROMPT> | --prompt-file <FILE>]
 ```
 
 ### Options
@@ -43,65 +43,65 @@ harness run [OPTIONS] [--prompt <PROMPT> | --prompt-file <FILE>]
 
 ```bash
 # Basic run
-harness run --agent claude --prompt "explain main.rs"
+bkgcrewcli run --agent claude --prompt "explain main.rs"
 
 # With model alias and output file
-harness run -a claude -m sonnet -p "fix the bug" -o session.ndjson
+bkgcrewcli run -a claude -m sonnet -p "fix the bug" -o session.ndjson
 
 # Dry-run to see resolved command
-harness run --agent claude --model opus --prompt "hello" --dry-run
+bkgcrewcli run --agent claude --model opus --prompt "hello" --dry-run
 
 # Read-only mode
-harness run --agent claude --permissions read-only --prompt "analyze this"
+bkgcrewcli run --agent claude --permissions read-only --prompt "analyze this"
 
 # Pipe from stdin
-cat task.md | harness run --agent claude
+cat task.md | bkgcrewcli run --agent claude
 ```
 
-## harness list
+## bkgcrewcli list
 
 List available agents with their installation status.
 
 ```
-harness list [OPTIONS]
+bkgcrewcli list [OPTIONS]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--json` | Output as JSON |
 
-## harness check
+## bkgcrewcli check
 
 Check if a specific agent is installed and working.
 
 ```
-harness check <AGENT> [OPTIONS]
+bkgcrewcli check <AGENT> [OPTIONS]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--capabilities` | Show agent capabilities |
 
-## harness config
+## bkgcrewcli config
 
 Manage configuration.
 
 ```
-harness config <SUBCOMMAND>
+bkgcrewcli config <SUBCOMMAND>
 ```
 
 | Subcommand | Description |
 |------------|-------------|
-| `init` | Create `harness.toml` in the current directory |
+| `init` | Create `bkgcrewcli.toml` in the current directory |
 | `show` | Display resolved configuration |
 | `path` | Print the config file path |
 
-## harness models
+## bkgcrewcli models
 
 Manage the model registry.
 
 ```
-harness models <SUBCOMMAND>
+bkgcrewcli models <SUBCOMMAND>
 ```
 
 | Subcommand | Description |

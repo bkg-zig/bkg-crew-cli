@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-/// All errors that can occur in the bkgcrewcli.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("agent binary not found: {binary} (is {agent} installed?)")]
@@ -27,6 +26,12 @@ pub enum Error {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("HTTP request error: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("database error: {0}")]
+    Database(#[from] sqlx::Error),
+
     #[error("failed to parse models registry: {0}")]
     ModelsParse(String),
 
@@ -38,7 +43,6 @@ pub enum Error {
 }
 
 impl Error {
-    /// Stable error code string for programmatic consumption.
     pub fn code(&self) -> &'static str {
         match self {
             Error::BinaryNotFound { .. } => "E001",
@@ -49,6 +53,8 @@ impl Error {
             Error::InvalidWorkDir(_) => "E006",
             Error::Io(_) => "E007",
             Error::Json(_) => "E008",
+            Error::Http(_) => "E009",
+            Error::Database(_) => "E012",
             Error::ModelsParse(_) => "E010",
             Error::ModelsFetch(_) => "E011",
             Error::Other(_) => "E999",

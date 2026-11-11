@@ -3,7 +3,7 @@ title: Event Stream
 description: The unified NDJSON event format that all agents are translated into
 ---
 
-Harness translates every agent's native output into a unified NDJSON event stream. Each line of output is a JSON object with a `type` field and a `timestamp_ms` field.
+bkgcrewcli translates every agent's native output into a unified NDJSON event stream. Each line of output is a JSON object with a `type` field and a `timestamp_ms` field.
 
 ## Event types
 
@@ -117,13 +117,13 @@ The NDJSON format makes it easy to consume line-by-line:
 
 ```bash
 # Pipe to jq for pretty-printing
-harness run --agent claude --prompt "hello" | jq .
+bkgcrewcli run --agent claude --prompt "hello" | jq .
 
 # Filter for specific event types
-harness run --agent claude --prompt "hello" | jq 'select(.type == "Message")'
+bkgcrewcli run --agent claude --prompt "hello" | jq 'select(.type == "Message")'
 
 # Extract just the text
-harness run --agent claude --prompt "hello" | jq -r 'select(.type == "TextDelta") | .text'
+bkgcrewcli run --agent claude --prompt "hello" | jq -r 'select(.type == "TextDelta") | .text'
 ```
 
 In code, read line by line and parse each as JSON:
@@ -133,7 +133,7 @@ import json
 import subprocess
 
 proc = subprocess.Popen(
-    ["harness", "run", "--agent", "claude", "--prompt", "hello"],
+    ["bkgcrewcli", "run", "--agent", "claude", "--prompt", "hello"],
     stdout=subprocess.PIPE,
     text=True,
 )
@@ -146,4 +146,4 @@ for line in proc.stdout:
 
 ## Session logging
 
-Every run is automatically logged to `~/.local/share/harness/sessions/<id>.ndjson` with a metadata sidecar file. You can replay or analyze past sessions from these files.
+Every run is automatically logged to `~/.local/share/bkgcrewcli/sessions/<id>.ndjson` with a metadata sidecar file. You can replay or analyze past sessions from these files.

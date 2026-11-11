@@ -1,9 +1,9 @@
 ---
-title: harness.toml
+title: bkgcrewcli.toml
 description: Project-level configuration file reference
 ---
 
-Place a `harness.toml` file in your project root (or any parent directory — harness walks up the directory tree to find it).
+Place a `bkgcrewcli.toml` file in your project root (or any parent directory — bkgcrewcli walks up the directory tree to find it).
 
 ## Basic example
 
@@ -58,20 +58,20 @@ See [Model Registry](/docs/configuration/model-registry) for the full format.
 
 ## Config resolution order
 
-When harness needs a value, it checks in this order:
+When bkgcrewcli needs a value, it checks in this order:
 1. CLI flags (`--agent`, `--model`, etc.)
-2. `harness.toml` in the current or parent directory
-3. Legacy config at `~/.config/harness/config.toml` (deprecated)
+2. `bkgcrewcli.toml` in the current or parent directory
+3. Legacy config at `~/.config/bkgcrewcli/config.toml` (deprecated)
 4. Built-in defaults
 
 ## Legacy config
 
-Harness still supports the legacy config format at `~/.config/harness/config.toml` and `.harnessrc.toml`, but these emit deprecation warnings. Migrate to `harness.toml` for the best experience.
+bkgcrewcli still supports the legacy config format at `~/.config/bkgcrewcli/config.toml` and `.bkgcrewclirc.toml`, but these emit deprecation warnings. Migrate to `bkgcrewcli.toml` for the best experience.
 
 ## Create a config file
 
 ```bash
-harness config init    # Creates harness.toml in the current directory
-harness config show    # Display resolved config
-harness config path    # Show config file path
+bkgcrewcli config init    # Creates bkgcrewcli.toml in the current directory
+bkgcrewcli config show    # Display resolved config
+bkgcrewcli config path    # Show config file path
 ```

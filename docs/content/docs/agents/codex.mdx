@@ -1,6 +1,6 @@
 ---
 title: OpenAI Codex
-description: Using OpenAI Codex with harness — flags, output format, and event mapping
+description: Using OpenAI Codex with bkgcrewcli — flags, output format, and event mapping
 ---
 
 Codex is OpenAI's coding agent CLI. It uses the `codex` binary and has a headless `exec` subcommand.
@@ -17,9 +17,9 @@ npm install -g @openai/codex
 codex exec --json --sandbox danger-full-access --dangerously-bypass-approvals-and-sandbox "fix the bug"
 ```
 
-## How harness maps to Codex
+## How bkgcrewcli maps to Codex
 
-| harness | Codex |
+| bkgcrewcli | Codex |
 |---------|-------|
 | `PermissionMode::FullAccess` | `--sandbox danger-full-access --dangerously-bypass-approvals-and-sandbox` |
 | `PermissionMode::ReadOnly` | `--sandbox read-only` |
@@ -116,7 +116,7 @@ With `--json`, Codex emits JSONL. Event types:
 
 ## Event mapping
 
-| Codex event | harness event |
+| Codex event | bkgcrewcli event |
 |-------------|---------------|
 | `thread.started` | `SessionStart` |
 | `item.started` (command_execution) | `ToolStart` |
