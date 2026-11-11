@@ -21,6 +21,8 @@
   --orange: #ff8a3d;
   --gold: #ffd24d;
   --red: #ff4d5e;
+  --teal: #00e5a0;
+  --rose: #ff5ca8;
 
   /* body text reads mint-tinted, everything glows */
   --txt: #c9ded4;
@@ -70,6 +72,8 @@ a { color: var(--cyan); text-decoration: none; }
 .ac-gold    { --ac: var(--gold); }
 .ac-red     { --ac: var(--red); }
 .ac-dim     { --ac: var(--dim); }
+.ac-teal    { --ac: var(--teal); }
+.ac-rose    { --ac: var(--rose); }
 
 .neon { color: var(--ac); text-shadow: 0 0 6px color-mix(in srgb, var(--ac) 55%, transparent), 0 0 20px color-mix(in srgb, var(--ac) 28%, transparent); }
 .lead, h1, h2, h3, .win-title, .brand, .nav-item, .stat-label, .sec-title, .pill, .btn, .field label, th {
