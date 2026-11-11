@@ -216,7 +216,7 @@
       <div class="ac-violet sec-title">${esc(s.sec)}</div>
       ${s.items.map((i) => `
         <div class="ac-${i.ac} nav-item ${i.id === S.page ? 'on' : ''}" data-page="${i.id}">
-          <span class="ic">${i.ic}</span> ${esc(i.label)}
+          <span class="ic">${i.ic}</span> <span class="lbl">${esc(i.label)}</span>
           ${i.admin && !S.unlocked ? '<span class="lock">🔒</span>' : ''}
         </div>`).join('')}
     `).join('');
@@ -233,6 +233,18 @@
       aboutToggle.style.borderColor = open ? '' : 'rgba(255, 210, 77, .45)';
       aboutToggle.style.color = open ? '' : 'var(--gold)';
       aboutToggle.style.background = open ? '' : 'rgba(255, 210, 77, .06)';
+    });
+
+    // sidebar collapse (icons stay, labels hide)
+    const sideToggle = $('#sideCollapse');
+    const sidebarEl = $('#sidebar');
+    sideToggle.addEventListener('click', () => {
+      const collapsed = sidebarEl.classList.toggle('collapsed');
+      sideToggle.classList.toggle('on', collapsed);
+      sideToggle.style.borderColor = collapsed ? 'rgba(255, 210, 77, .45)' : '';
+      sideToggle.style.color = collapsed ? 'var(--gold)' : '';
+      sideToggle.style.background = collapsed ? 'rgba(255, 210, 77, .06)' : '';
+      sideToggle.textContent = collapsed ? '▤' : '❐';
     });
   }
 

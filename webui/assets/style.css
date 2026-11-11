@@ -384,6 +384,13 @@ td.td-good { color: var(--mint); }
 .skel { color: var(--faint); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .4; } }
 
+/* sidebar collapse (icons only) */
+.sidebar.collapsed { width: 50px; }
+.sidebar.collapsed .sec-title,
+.sidebar.collapsed .side-head,
+.sidebar.collapsed .nav-item .lbl { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 7px 0; }
+
 /* overlay sidebar (mobile) */
 .side-scrim { display: none; }
 

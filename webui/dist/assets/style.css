@@ -21,6 +21,8 @@
   --orange: #ff8a3d;
   --gold: #ffd24d;
   --red: #ff4d5e;
+  --teal: #00e5a0;
+  --rose: #ff5ca8;
 
   /* body text reads mint-tinted, everything glows */
   --txt: #c9ded4;
@@ -70,6 +72,8 @@ a { color: var(--cyan); text-decoration: none; }
 .ac-gold    { --ac: var(--gold); }
 .ac-red     { --ac: var(--red); }
 .ac-dim     { --ac: var(--dim); }
+.ac-teal    { --ac: var(--teal); }
+.ac-rose    { --ac: var(--rose); }
 
 .neon { color: var(--ac); text-shadow: 0 0 6px color-mix(in srgb, var(--ac) 55%, transparent), 0 0 20px color-mix(in srgb, var(--ac) 28%, transparent); }
 .lead, h1, h2, h3, .win-title, .brand, .nav-item, .stat-label, .sec-title, .pill, .btn, .field label, th {
@@ -379,6 +383,13 @@ td.td-good { color: var(--mint); }
 .empty { color: var(--faint); font-size: 12px; padding: 10px 0; }
 .skel { color: var(--faint); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .4; } }
+
+/* sidebar collapse (icons only) */
+.sidebar.collapsed { width: 50px; }
+.sidebar.collapsed .sec-title,
+.sidebar.collapsed .side-head,
+.sidebar.collapsed .nav-item .lbl { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 7px 0; }
 
 /* overlay sidebar (mobile) */
 .side-scrim { display: none; }
