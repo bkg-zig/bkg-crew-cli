@@ -83,7 +83,12 @@ pub fn gateway_router(state: GatewayState) -> Router {
 fn scoped_rewrite(body: &mut serde_json::Value, provider: &str) -> bool {
     let req_model = body.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string();
     if !req_model.is_empty() && !provider.is_empty() {
-        body["model"] = json!({ "model": format!("{provider}/{req_model}") });
+        if req_model.contains('/') {
+            // body model already carries a provider/model prefix — keep it
+            *body.get_mut("model").unwrap() = serde_json::Value::String(req_model.clone());
+        } else {
+            *body.get_mut("model").unwrap() = serde_json::Value::String(format!("{provider}/{req_model}"));
+        }
     }
     true
 }

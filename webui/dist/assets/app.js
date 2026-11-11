@@ -223,6 +223,17 @@
     $('#sidebarNav').querySelectorAll('[data-page]').forEach((el) => {
       el.addEventListener('click', () => { go(el.dataset.page); closeSidebar(); });
     });
+    // about accordion
+    const aboutToggle = $('#aboutToggle');
+    const aboutPanel = $('#aboutPanel');
+    aboutToggle.addEventListener('click', () => {
+      const open = aboutPanel.style.display === 'block';
+      aboutPanel.style.display = open ? 'none' : 'block';
+      aboutToggle.classList.toggle('on', !open);
+      aboutToggle.style.borderColor = open ? '' : 'rgba(255, 210, 77, .45)';
+      aboutToggle.style.color = open ? '' : 'var(--gold)';
+      aboutToggle.style.background = open ? '' : 'rgba(255, 210, 77, .06)';
+    });
   }
 
   function renderTopbar() {
