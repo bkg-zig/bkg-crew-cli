@@ -4,11 +4,9 @@
 use crate::error::{Error, Result};
 use crate::sandbox::cubesandbox::{CubeSandboxClient, TemplateInfo, CreateTemplateRequest, TemplateCreateResponse, TemplateStatus};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::{info, debug, warn};
+use tracing::info;
 use serde::{Serialize, Deserialize};
 
 /// Template configuration

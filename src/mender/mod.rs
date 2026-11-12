@@ -9,6 +9,7 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FailureClass {
     Build,
     Test,
@@ -18,10 +19,10 @@ pub enum FailureClass {
     Network,
     Tooling,
     Context,
+    #[default]
     Unknown,
 }
 
-impl Default for FailureClass { fn default() -> Self { Self::Unknown } }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepairMotif {

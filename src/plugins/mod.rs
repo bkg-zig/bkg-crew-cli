@@ -225,7 +225,7 @@ fn spawn_plugin(path: &Path) -> std::io::Result<PluginProc> {
     };
     cmd.stdin(Stdio::piped()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
     let mut child = cmd.spawn()?;
-    let stdin = child.stdin.take().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "no stdin"))?;
+    let stdin = child.stdin.take().ok_or_else(|| std::io::Error::other("no stdin"))?;
     Ok(PluginProc { name, child, stdin })
 }
 

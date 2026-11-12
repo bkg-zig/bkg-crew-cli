@@ -237,8 +237,7 @@ fn convert_json_to_toml(json_body: &str) -> Result<String, String> {
         let key = id
             .replace('/', "-")
             .replace('@', "")
-            .replace('.', "-")
-            .replace('_', "-");
+            .replace(['.', '_'], "-");
 
         // Determine provider from owned_by or ID
         let provider = if owned_by.contains("anthropic") || id.contains("claude") {
@@ -270,7 +269,7 @@ fn convert_json_to_toml(json_body: &str) -> Result<String, String> {
         toml_output.push_str(&format!("codex = \"{id}\"\n"));
         toml_output.push_str(&format!("opencode = \"{id}\"\n"));
         toml_output.push_str(&format!("cursor = \"{id}\"\n"));
-        toml_output.push_str("\n");
+        toml_output.push('\n');
     }
 
     Ok(toml_output)

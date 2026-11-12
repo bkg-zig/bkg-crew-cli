@@ -143,13 +143,13 @@ impl AgentRunner for SandboxRunner {
 
 impl SandboxRunner {
     fn build_sandbox_env(&self, config: &TaskConfig) -> Vec<(String, String)> {
-        let mut env = Vec::new();
-        env.push(("BKG_SANDBOX".to_string(), "1".to_string()));
-        env.push(("BKG_TASK_ID".to_string(), config.id.clone()));
-        env.push(("BKG_AGENT".to_string(), config.agent.to_string()));
-        env.push(("BKG_STACK".to_string(), config.stack.clone()));
-        env.push(("BKG_PROJECT".to_string(), config.project.clone()));
-        env
+        vec![
+            ("BKG_SANDBOX".to_string(), "1".to_string()),
+            ("BKG_TASK_ID".to_string(), config.id.clone()),
+            ("BKG_AGENT".to_string(), self.agent_kind.to_string()),
+            ("BKG_STACK".to_string(), config.stack.clone()),
+            ("BKG_PROJECT".to_string(), config.project.clone()),
+        ]
     }
 
     async fn run_cubesandbox(

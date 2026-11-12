@@ -208,6 +208,8 @@ fn model_entry_agent_model() {
         codex: Some("x-id".into()),
         opencode: None,
         cursor: None,
+        pi: None,
+        copilot: None,
     };
     assert_eq!(entry.agent_model(AgentKind::Claude), Some("c-id"));
     assert_eq!(entry.agent_model(AgentKind::Codex), Some("x-id"));
@@ -224,6 +226,8 @@ fn model_entry_supported_agents() {
         codex: None,
         opencode: Some("o".into()),
         cursor: Some("u".into()),
+        pi: None,
+        copilot: None,
     };
     let agents = entry.supported_agents();
     assert_eq!(agents.len(), 3);

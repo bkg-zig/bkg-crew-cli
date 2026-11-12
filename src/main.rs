@@ -8,10 +8,10 @@ use futures::StreamExt;
 use bkgcrewcli::{
     config::{AgentKind, OutputFormat, PermissionMode, TaskConfig},
     event::Event,
-    keystore::{ApiKeyEntry, Keystore, ProviderConfig, ProviderUpdate},
+    keystore::{Keystore, ProviderUpdate},
     logger::SessionLogger,
     models::{ModelRegistry, ModelResolution},
-    providers::{ApiClient, ChatRequest, ChatMessage, MessageContent, MessageRole},
+    providers::ChatRequest,
     run_task_with_cancel,
     settings::{ProjectConfig, Settings},
 };

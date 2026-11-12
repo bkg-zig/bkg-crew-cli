@@ -310,7 +310,7 @@ impl ContainerdShim {
     }
 
     /// Attach to container (get stdio streams)
-    pub async fn attach(&self, container_id: &str) -> Result<AttachHandle> {
+    pub async fn attach(&self, _container_id: &str) -> Result<AttachHandle> {
         // This would return a handle with stdin/stdout/stderr streams
         // For now, return a placeholder
         Err(Error::Other("Attach not yet implemented".to_string()))

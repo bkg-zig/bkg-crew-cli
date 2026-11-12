@@ -15,7 +15,6 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
 
 use crate::config::{AgentKind, OutputFormat, PermissionMode, TaskConfig};
 use crate::models::ModelRegistry;

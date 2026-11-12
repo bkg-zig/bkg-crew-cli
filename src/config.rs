@@ -97,7 +97,8 @@ impl std::str::FromStr for AgentKind {
     type Err = String;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        // Accept both hyphen and underscore spellings (`claude-code` / `claude_code`).
+        match s.to_lowercase().replace('_', "-").as_str() {
             "claude" | "claude-code" => Ok(AgentKind::Claude),
             "opencode" | "open-code" => Ok(AgentKind::OpenCode),
             "codex" | "openai-codex" => Ok(AgentKind::Codex),
@@ -406,6 +407,41 @@ impl TaskConfigBuilder {
 
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.config.model = Some(model.into());
+        self
+    }
+
+    pub fn cwd(mut self, cwd: impl Into<PathBuf>) -> Self {
+        self.config.cwd = Some(cwd.into());
+        self
+    }
+
+    pub fn system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.config.system_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn append_system_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.config.append_system_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn binary_path(mut self, path: impl Into<PathBuf>) -> Self {
+        self.config.binary_path = Some(path.into());
+        self
+    }
+
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.config.env.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn extra_arg(mut self, arg: impl Into<String>) -> Self {
+        self.config.extra_args.push(arg.into());
+        self
+    }
+
+    pub fn extra_args(mut self, args: Vec<String>) -> Self {
+        self.config.extra_args.extend(args);
         self
     }
 

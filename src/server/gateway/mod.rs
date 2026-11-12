@@ -38,6 +38,7 @@ impl GatewayState {
 
     /// Authorize a request: static gateway keys and scoped crew tokens.
     /// Returns the crew token id when one was presented.
+    #[allow(clippy::result_large_err)] // Err is an axum Response, returned as-is to the caller
     pub async fn authorize(&self, headers: &axum::http::HeaderMap) -> Result<Option<String>, axum::response::Response> {
         let cfg = self.snapshot().await;
         auth::authorize(headers, &cfg.auth.api_keys, &self.tokens).await
@@ -192,7 +193,7 @@ pub async fn scoped_images_edits(
     if body.starts_with(b"{") {
         if let Ok(mut v) = serde_json::from_slice::<Value>(&body) {
             let _ = scoped_rewrite(&mut v, &provider);
-            if let Ok(out) = serde_json::to_vec(&mut v) { body = out.into(); }
+            if let Ok(out) = serde_json::to_vec(&v) { body = out.into(); }
         }
     }
     images::edits(State(st), headers, body).await
@@ -226,7 +227,14 @@ async fn admin_get_config(
     if let Err(e) = auth::require_admin_auth(&headers, &cfg) { return e; }
     let mut v = serde_json::to_value(&*cfg).unwrap_or(json!({}));
     // mask sensitive
-    if let Some(auth) = v.get_mut("auth") { if let Some(keys) = auth.get_mut("apiKeys") { *keys = json!(keys.as_array().map(|a| a.len()).unwrap_or(0)); } if auth.get("adminApiKey").is_some() { auth["adminApiKey"] = json!("***"); } }
+    if let Some(auth) = v.get_mut("auth") {
+        if let Some(keys) = auth.get_mut("apiKeys") {
+            *keys = json!(keys.as_array().map(|a| a.len()).unwrap_or(0));
+        }
+        if auth.get("adminApiKey").is_some() {
+            auth["adminApiKey"] = json!("***");
+        }
+    }
     // gateway provider inline keys: mask too (the editor sends "***" back)
     if let Some(providers) = v.get_mut("providers").and_then(|p| p.as_object_mut()) {
         for (_, p) in providers.iter_mut() {
@@ -250,7 +258,7 @@ async fn admin_set_config(
     }
     // Masked-aware merge: apply only the fields the editor actually sent,
     // so read-back secrets ("***" / key counts) never wipe stored values.
-    let mut current_val = {
+    let current_val = {
         let cfg = st.config.read().await;
         serde_json::to_value(&*cfg).unwrap_or(json!({}))
     };

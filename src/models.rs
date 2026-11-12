@@ -350,6 +350,8 @@ claude = "custom-id"
             codex: None,
             opencode: Some("o".into()),
             cursor: None,
+            pi: None,
+            copilot: None,
         };
         let agents = entry.supported_agents();
         assert_eq!(agents, vec![AgentKind::Claude, AgentKind::OpenCode]);

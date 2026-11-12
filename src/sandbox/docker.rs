@@ -1,7 +1,7 @@
 // Docker-specific sandbox implementation
 // Provides container lifecycle management via Docker CLI
 
-use crate::config::{SandboxConfig, NetworkMode};
+use crate::config::SandboxConfig;
 use crate::sandbox::shim::{VolumeMount, ResourceLimits, SecurityOptions};
 use std::path::PathBuf;
 use std::collections::HashMap;
@@ -9,9 +9,7 @@ use serde::{Serialize, Deserialize};
 
 /// Docker container manager
 #[derive(Debug, Clone)]
-pub struct DockerManager {
-    config: DockerConfig,
-}
+pub struct DockerManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockerConfig {
@@ -42,9 +40,7 @@ impl Default for DockerConfig {
 impl DockerManager {
     pub fn new(config: &SandboxConfig) -> Self {
         let _ = config; // Acknowledge config for future use
-        Self {
-            config: DockerConfig::default(),
-        }
+        Self
     }
 
     /// Check if Docker is available on the system

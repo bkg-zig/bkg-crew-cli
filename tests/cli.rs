@@ -13,7 +13,7 @@ fn help_flag_shows_usage() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Run Claude Code, OpenCode, Codex, or Cursor"));
+        .stdout(predicate::str::contains("Run Claude Code, OpenCode, Codex, Cursor, Pi, or Copilot"));
 }
 
 #[test]
@@ -115,8 +115,8 @@ fn run_rejects_unknown_output_format() {
 
 #[test]
 fn run_accepts_all_permission_modes() {
-    // These should fail because the agent binary isn't available in CI,
-    // but they should get past argument parsing.
+    // Dry-run only: parsing must accept every mode, but no agent is executed
+    // (an installed agent would otherwise run a real task per mode).
     for mode in &["full-access", "full", "yolo", "default", "read-only", "readonly", "plan"] {
         let result = bkgcrewcli_cmd()
             .args([
@@ -124,6 +124,7 @@ fn run_accepts_all_permission_modes() {
                 "--agent", "claude",
                 "--prompt", "hello",
                 "--permissions", mode,
+                "--dry-run",
             ])
             .assert();
 
@@ -148,6 +149,7 @@ fn run_accepts_all_output_formats() {
                 "--agent", "claude",
                 "--prompt", "hello",
                 "--output", fmt,
+                "--dry-run",
             ])
             .assert();
 

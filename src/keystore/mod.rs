@@ -98,7 +98,7 @@ impl Keystore {
         } else {
             let mut salt = [0u8; 32];
             OsRng.fill_bytes(&mut salt);
-            std::fs::write(&salt_path, &salt).map_err(|e| format!("Failed to write salt: {e}"))?;
+            std::fs::write(&salt_path, salt).map_err(|e| format!("Failed to write salt: {e}"))?;
             salt.to_vec()
         };
 
@@ -336,6 +336,7 @@ impl Keystore {
     }
 
     /// Store a provider configuration.
+    #[allow(clippy::too_many_arguments)] // provider record fields are stored as one unit
     pub async fn store_provider(
         &self,
         name: &str,

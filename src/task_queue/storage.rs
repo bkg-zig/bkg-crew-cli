@@ -149,7 +149,7 @@ impl TaskStorage for SqliteTaskStorage {
         let child_ids_json = serde_json::to_string(&task.child_ids)?;
         let tags_json = serde_json::to_string(&task.tags)?;
         let metadata_json = serde_json::to_string(&task.metadata)?;
-        let sandbox_config_json = task.sandbox_config.as_ref().map(|c| serde_json::to_string(c)).transpose()?;
+        let sandbox_config_json = task.sandbox_config.as_ref().map(serde_json::to_string).transpose()?;
 
         sqlx::query(
             r#"INSERT INTO tasks (
@@ -210,7 +210,7 @@ impl TaskStorage for SqliteTaskStorage {
         let child_ids_json = serde_json::to_string(&task.child_ids)?;
         let tags_json = serde_json::to_string(&task.tags)?;
         let metadata_json = serde_json::to_string(&task.metadata)?;
-        let sandbox_config_json = task.sandbox_config.as_ref().map(|c| serde_json::to_string(c)).transpose()?;
+        let sandbox_config_json = task.sandbox_config.as_ref().map(serde_json::to_string).transpose()?;
 
         sqlx::query(
             r#"UPDATE tasks SET

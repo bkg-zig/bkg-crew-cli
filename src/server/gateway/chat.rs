@@ -76,6 +76,7 @@ pub async fn chat_completions(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // request context is passed through as one unit
 async fn stream_chat(
     st: Arc<super::GatewayState>,
     mut tracker: RunTracker,
@@ -169,7 +170,7 @@ async fn stream_chat(
                         if line.is_empty() { continue; }
                         if let Some(data) = line.strip_prefix("data: ") {
                             if !first && data != "[DONE]" { first = true; tracker.mark_first_token(); }
-                            let _ = tx.send(Ok(Event::default().data(data.to_string()))).await;
+                            let _ = tx.send(Ok(Event::default().data(data))).await;
                         } else if line.starts_with(':') {
                             // comment keepalive
                         } else {

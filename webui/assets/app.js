@@ -213,7 +213,11 @@
     $('#sidebarNav').querySelectorAll('[data-page]').forEach((el) => {
       el.addEventListener('click', () => { go(el.dataset.page); closeSidebar(); });
     });
+  }
 
+  /* Static sidebar controls — bound once in boot(). renderSidebar() runs on
+     every navigation; binding here would stack listeners and double-toggle. */
+  function bindSidebarControls() {
     // about accordion (footer)
     const aboutToggle = $('#aboutToggle');
     const aboutPanel = $('#aboutPanel');
@@ -1034,6 +1038,7 @@
 
   /* ── boot ────────────────────────────────────────────────────────── */
   function boot() {
+    bindSidebarControls();
     $('#burger').addEventListener('click', () => {
       $('#sidebar').classList.toggle('open');
       $('#scrim').classList.toggle('show');
@@ -1047,7 +1052,6 @@
     $('#tokenInput').addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') $('#tokenApply').click();
     });
-    $('#brand').addEventListener('click', () => go('dashboard'));
     // restore session unlock
     if (S.token) {
       api('/admin/app-config').then(() => {

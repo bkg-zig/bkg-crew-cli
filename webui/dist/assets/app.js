@@ -201,21 +201,11 @@
   const skel = () => '<div class="skel">lade …</div>';
 
   /* ── shell rendering ─────────────────────────────────────────────── */
-  function renderRail() {
-    const it = findItem(S.page);
-    $('#railDots').innerHTML = NAV.flatMap((s) => s.items).map((i) => `
-      <div class="ac-${i.ac} rail-dot ${i.id === S.page ? 'on' : ''}" data-page="${i.id}" title="${esc(i.label)}">${i.ic}</div>
-    `).join('');
-    $('#railDots').querySelectorAll('[data-page]').forEach((el) => {
-      el.addEventListener('click', () => go(el.dataset.page));
-    });
-  }
-
   function renderSidebar() {
     $('#sidebarNav').innerHTML = NAV.map((s) => `
       <div class="ac-violet sec-title">${esc(s.sec)}</div>
       ${s.items.map((i) => `
-        <div class="ac-${i.ac} nav-item ${i.id === S.page ? 'on' : ''}" data-page="${i.id}">
+        <div class="ac-${i.ac} nav-item ${i.id === S.page ? 'on' : ''}" data-page="${i.id}" title="${esc(i.label)}">
           <span class="ic">${i.ic}</span> <span class="lbl">${esc(i.label)}</span>
           ${i.admin && !S.unlocked ? '<span class="lock">🔒</span>' : ''}
         </div>`).join('')}
@@ -223,28 +213,39 @@
     $('#sidebarNav').querySelectorAll('[data-page]').forEach((el) => {
       el.addEventListener('click', () => { go(el.dataset.page); closeSidebar(); });
     });
-    // about accordion
+  }
+
+  /* Static sidebar controls — bound once in boot(). renderSidebar() runs on
+     every navigation; binding here would stack listeners and double-toggle. */
+  function bindSidebarControls() {
+    // about accordion (footer)
     const aboutToggle = $('#aboutToggle');
     const aboutPanel = $('#aboutPanel');
     aboutToggle.addEventListener('click', () => {
-      const open = aboutPanel.style.display === 'block';
-      aboutPanel.style.display = open ? 'none' : 'block';
+      const open = !aboutPanel.hidden;
+      aboutPanel.hidden = open;
       aboutToggle.classList.toggle('on', !open);
       aboutToggle.style.borderColor = open ? '' : 'rgba(255, 210, 77, .45)';
       aboutToggle.style.color = open ? '' : 'var(--gold)';
       aboutToggle.style.background = open ? '' : 'rgba(255, 210, 77, .06)';
     });
 
-    // sidebar collapse (icons stay, labels hide)
+    // sidebar collapse — toggle in header, persisted
     const sideToggle = $('#sideCollapse');
     const sidebarEl = $('#sidebar');
-    sideToggle.addEventListener('click', () => {
-      const collapsed = sidebarEl.classList.toggle('collapsed');
+    const SIDEBAR_COLLAPSED_KEY = 'bkg_crew_sidebar_collapsed';
+    const applyCollapsed = (collapsed) => {
+      sidebarEl.classList.toggle('collapsed', collapsed);
       sideToggle.classList.toggle('on', collapsed);
       sideToggle.style.borderColor = collapsed ? 'rgba(255, 210, 77, .45)' : '';
       sideToggle.style.color = collapsed ? 'var(--gold)' : '';
       sideToggle.style.background = collapsed ? 'rgba(255, 210, 77, .06)' : '';
-      sideToggle.textContent = collapsed ? '▤' : '❐';
+      try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) { /* storage blocked */ }
+    };
+    try { if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') applyCollapsed(true); } catch (e) { /* storage blocked */ }
+    sideToggle.addEventListener('click', () => {
+      const collapsed = sidebarEl.classList.contains('collapsed');
+      applyCollapsed(!collapsed);
     });
   }
 
@@ -1022,7 +1023,7 @@
     }
     S.page = page;
     const host = $('#page');
-    renderRail(); renderSidebar(); renderTopbar();
+    renderSidebar(); renderTopbar();
     host.innerHTML = `<div class="ac-cyan">${skel()}</div>`;
     window.history.replaceState(null, '', `#${page}`);
     try {
@@ -1037,6 +1038,7 @@
 
   /* ── boot ────────────────────────────────────────────────────────── */
   function boot() {
+    bindSidebarControls();
     $('#burger').addEventListener('click', () => {
       $('#sidebar').classList.toggle('open');
       $('#scrim').classList.toggle('show');
@@ -1050,7 +1052,6 @@
     $('#tokenInput').addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') $('#tokenApply').click();
     });
-    $('#brand').addEventListener('click', () => go('dashboard'));
     // restore session unlock
     if (S.token) {
       api('/admin/app-config').then(() => {

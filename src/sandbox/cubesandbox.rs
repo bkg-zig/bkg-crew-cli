@@ -6,7 +6,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, debug, warn};
+use tracing::info;
 
 /// CubeSandbox API client
 #[derive(Clone, Debug)]

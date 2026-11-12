@@ -23,7 +23,7 @@ pub async fn edits(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    let cfg = st.snapshot().await;
+    let _cfg = st.snapshot().await;
     if let Err(e) = st.authorize(&headers).await { return e; }
     // Native JSON edits supported; multipart/form-data editing requires provider-specific handling.
     let content_type = headers

@@ -21,6 +21,7 @@ pub fn extract_api_key(headers: &HeaderMap) -> Option<String> {
 }
 
 /// Static gateway keys only (no crew tokens).
+#[allow(clippy::result_large_err)] // Err is an axum Response, returned as-is to the caller
 pub fn require_gateway_auth(headers: &HeaderMap, keys: &[String]) -> Result<(), Response> {
     if keys.is_empty() { return Ok(()); }
     let Some(provided) = extract_api_key(headers) else { return Err(unauthorized()); };
@@ -29,6 +30,7 @@ pub fn require_gateway_auth(headers: &HeaderMap, keys: &[String]) -> Result<(), 
 
 /// Gateway auth accepting static keys *and* scoped crew tokens.
 /// Returns the crew token id when the caller presented one.
+#[allow(clippy::result_large_err)] // Err is an axum Response, returned as-is to the caller
 pub async fn authorize(
     headers: &HeaderMap,
     keys: &[String],
@@ -52,6 +54,7 @@ pub async fn authorize(
     Err(unauthorized())
 }
 
+#[allow(clippy::result_large_err)] // Err is an axum Response, returned as-is to the caller
 pub fn require_admin_auth(headers: &HeaderMap, cfg: &super::GatewayConfig) -> Result<(), Response> {
     let keys = if let Some(k) = &cfg.auth.admin_api_key { vec![k.clone()] } else { vec![] };
     if keys.is_empty() { return Ok(()); }

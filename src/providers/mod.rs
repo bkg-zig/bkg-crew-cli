@@ -9,7 +9,7 @@ use reqwest::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::keystore::{ApiKeyEntry, Keystore, ProviderConfig};
+use crate::keystore::{Keystore, ProviderConfig};
 
 /// Standardized request for chat completions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,7 +366,7 @@ impl ProviderFactory {
         client: Client,
     ) -> Result<Arc<dyn Provider>, String> {
         // Get API key if configured
-        let api_key = if let Some(key_id) = &config.api_key_id {
+        let _api_key = if let Some(key_id) = &config.api_key_id {
             let key_entry = keystore
                 .get_api_key(key_id)
                 .await?
@@ -386,7 +386,7 @@ impl ProviderFactory {
     /// Create a provider with explicit API key (for testing or override).
     pub fn create_provider_with_key(
         config: &ProviderConfig,
-        api_key: String,
+        _api_key: String,
         client: Client,
     ) -> Result<Arc<dyn Provider>, String> {
         match config.provider_type.as_str() {
@@ -454,6 +454,7 @@ enum AnthropicToolChoice {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // fields mirror the upstream payload; not all are read
 struct AnthropicResponse {
     id: String,
     model: String,
@@ -472,6 +473,7 @@ struct AnthropicUsage {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)] // fields mirror the upstream payload; not all are read
 enum AnthropicStreamEvent {
     #[serde(rename = "message_start")]
     MessageStart { message: AnthropicResponse },
@@ -490,6 +492,7 @@ enum AnthropicStreamEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // fields mirror the upstream payload; not all are read
 struct AnthropicDelta {
     #[serde(rename = "type")]
     delta_type: String,
@@ -498,12 +501,14 @@ struct AnthropicDelta {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // fields mirror the upstream payload; not all are read
 struct AnthropicMessageDelta {
     stop_reason: Option<String>,
     stop_sequence: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // fields mirror the upstream payload; not all are read
 struct AnthropicError {
     #[serde(rename = "type")]
     error_type: String,
@@ -653,8 +658,7 @@ impl From<AnthropicStreamEvent> for Option<ChatChunk> {
     fn from(event: AnthropicStreamEvent) -> Self {
         match event {
             AnthropicStreamEvent::ContentBlockDelta { delta, .. } => {
-                if let Some(text) = delta.text {
-                    Some(ChatChunk {
+                delta.text.map(|text| ChatChunk {
                         id: format!("chunk-{}", chrono::Utc::now().timestamp_millis()),
                         object: "chat.completion.chunk".to_string(),
                         created: chrono::Utc::now().timestamp() as u64,
@@ -669,9 +673,6 @@ impl From<AnthropicStreamEvent> for Option<ChatChunk> {
                             finish_reason: None,
                         }],
                     })
-                } else {
-                    None
-                }
             }
             AnthropicStreamEvent::MessageDelta { delta, .. } => Some(ChatChunk {
                 id: format!("chunk-{}", chrono::Utc::now().timestamp_millis()),
@@ -978,8 +979,7 @@ impl ApiClient {
                 // Parse SSE format
                 let text = String::from_utf8_lossy(&chunk);
                 for line in text.lines() {
-                    if line.starts_with("data: ") {
-                        let data = &line[6..];
+                    if let Some(data) = line.strip_prefix("data: ") {
                         if data == "[DONE]" {
                             continue;
                         }

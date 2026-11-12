@@ -234,7 +234,7 @@ impl GatewayConfig {
     pub fn save(&self) -> Result<(), String> {
         let path = Self::path();
         if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
-        let mut v = serde_json::to_value(self).map_err(|e| e.to_string())?;
+        let v = serde_json::to_value(self).map_err(|e| e.to_string())?;
         // mask nothing on disk, write pretty
         let s = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
         fs::write(&path, s + "\n").map_err(|e| e.to_string())?;

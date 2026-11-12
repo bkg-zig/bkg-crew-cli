@@ -23,6 +23,7 @@ pub mod keystore;
 pub mod logger;
 pub mod mender;
 pub mod models;
+pub mod normalize;
 pub mod process;
 pub mod plugins;
 pub mod providers;
@@ -65,7 +66,18 @@ pub async fn run_task_with_cancel(
         });
     }
 
-    runner.run(config, cancel_token).await
+    let mut handle = runner.run(config, cancel_token).await?;
+    // Normalize the raw adapter stream so every consumer sees uniform events
+    // (synthetic user message, filled result text/usage, session metadata).
+    handle.stream = crate::normalize::normalize_stream(
+        handle.stream,
+        crate::normalize::NormalizeConfig {
+            cwd: config.cwd.as_ref().map(|p| p.display().to_string()),
+            model: config.model.clone(),
+            prompt: Some(config.prompt.clone()),
+        },
+    );
+    Ok(handle)
 }
 
 /// Create the appropriate runner for the given agent kind.

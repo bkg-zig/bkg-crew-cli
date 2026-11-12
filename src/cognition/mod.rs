@@ -9,6 +9,7 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SignalKind {
     RunStart,
     RunEnd,
@@ -16,10 +17,10 @@ pub enum SignalKind {
     Validation,
     Provider,
     Error,
+    #[default]
     Info,
 }
 
-impl Default for SignalKind { fn default() -> Self { Self::Info } }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Signal {
