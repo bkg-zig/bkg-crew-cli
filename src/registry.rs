@@ -7,7 +7,7 @@ const REGISTRY_URL: &str =
     "https://raw.githubusercontent.com/bkg-zig/bkg-crew-cli/main/models.toml";
 
 /// Default API endpoint for model listings (can be overridden via env var BKG_MODELS_API_URL or config).
-const DEFAULT_MODELS_API_URL: &str = "https://api.bkgcrewcli.dev/v1/models";
+const DEFAULT_MODELS_API_URL: &str = "https://api.eysho.info/v1/models";
 
 /// Cache TTL in seconds (24 hours).
 const TTL_SECS: u64 = 86400;

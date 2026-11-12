@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::AgentKind;
+use crate::config::{AgentKind, SandboxConfig};
 use crate::models::{ModelEntry, ModelRegistry};
 
 /// User settings loaded from `~/.config/bkgcrewcli/config.toml` and optionally
@@ -33,7 +33,91 @@ pub struct Settings {
     /// Per-agent configuration overrides.
     #[serde(default)]
     pub agents: HashMap<String, AgentSettings>,
+
+    /// Sandbox execution settings (provider: local | container | capsule).
+    #[serde(default)]
+    pub sandbox: SandboxConfig,
+
+    /// Memory subsystem (vault / cognition / mender) settings.
+    #[serde(default)]
+    pub memory: MemoryConfig,
+
+    /// Task queue settings.
+    #[serde(default)]
+    pub tasks: TaskQueueConfig,
 }
+
+/// Memory subsystem configuration (bkgcrewcli-native).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    /// Enable the vault knowledge store.
+    #[serde(default = "default_true")]
+    pub vault_enabled: bool,
+    /// Enable cognition signal capture.
+    #[serde(default = "default_true")]
+    pub cognition_enabled: bool,
+    /// Enable mender failure/repair learning.
+    #[serde(default = "default_true")]
+    pub mender_enabled: bool,
+    /// Default scope for vault/cognition/mender records.
+    #[serde(default = "default_scope")]
+    pub scope: String,
+    /// Max characters injected into a prompt from memory context.
+    #[serde(default = "default_memory_chars")]
+    pub max_context_chars: usize,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            vault_enabled: true,
+            cognition_enabled: true,
+            mender_enabled: true,
+            scope: default_scope(),
+            max_context_chars: default_memory_chars(),
+        }
+    }
+}
+
+fn default_scope() -> String { "default".to_string() }
+fn default_memory_chars() -> usize { 4000 }
+fn default_true() -> bool { true }
+fn default_parallel() -> u32 { 2 }
+fn default_queue_timeout() -> u64 { 900 }
+
+/// Task queue configuration (bkgcrewcli-native).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskQueueConfig {
+    /// Enable the persistent task queue.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Max tasks executed in parallel.
+    #[serde(default = "default_parallel")]
+    pub max_parallel: u32,
+    /// Default per-task timeout in seconds.
+    #[serde(default = "default_queue_timeout")]
+    pub default_timeout_secs: u64,
+    /// SQLite database path for the task queue (relative to the data dir).
+    #[serde(default = "default_queue_db")]
+    pub db_path: String,
+    /// Auto-chain finished tasks to their children.
+    #[serde(default = "default_true")]
+    pub auto_chain: bool,
+}
+
+impl Default for TaskQueueConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_parallel: default_parallel(),
+            default_timeout_secs: default_queue_timeout(),
+            db_path: default_queue_db(),
+            auto_chain: true,
+        }
+    }
+}
+
+fn default_queue_db() -> String { "bkgcrewcli/tasks.db".to_string() }
 
 /// Per-agent settings.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -145,6 +229,8 @@ impl Settings {
             merged.log_level.clone_from(&other.log_level);
         }
 
+        // Sandbox / memory / task-queue settings are global-only.
+
         // Merge per-agent settings.
         for (key, other_agent) in &other.agents {
             let entry = merged
@@ -166,8 +252,21 @@ impl Settings {
         merged
     }
 
-    /// Default config file path: `~/.config/bkgcrewcli/config.toml`.
+    /// Default config file path: central data dir first (`/srv/bkg/data/bkgcrewcli`),
+    /// then the user config dir. Override with the `BKGCREWCLI_CONFIG` env var.
     pub fn config_path() -> Option<PathBuf> {
+        if let Ok(p) = std::env::var("BKGCREWCLI_CONFIG") {
+            let p = p.trim().to_string();
+            if !p.is_empty() {
+                return Some(PathBuf::from(p));
+            }
+        }
+        for p in [
+            PathBuf::from("/srv/bkg/data/bkgcrewcli/config.toml"),
+            dirs::data_local_dir().map(|d| d.join("bkgcrewcli").join("config.toml")).unwrap_or_default(),
+        ] {
+            if p.is_file() { return Some(p); }
+        }
         dirs::config_dir().map(|d| d.join("bkgcrewcli").join("config.toml"))
     }
 
@@ -209,7 +308,52 @@ impl Settings {
 # api_key = "sk-ant-..."  # ANTHROPIC_API_KEY
 # base_url = "https://api.anthropic.com"  # OPENCODE_BASE_URL
 # extra_args = []
+
+# Sandbox execution (provider: local | container | capsule).
+# [sandbox]
+# enabled = false
+# provider = "local"
+# runtime = "docker"          # docker | podman
+# stack = "default"           # default | rust | python | node | go
+# project = "default"
+# auto_pull = true
+# network_isolation = true
+# capsule_endpoint = "https://capsule.local:8443"
+# capsule_template = "bkg-base"
+# capsule_timeout_secs = 300
+# cpu_limit = "2"
+# memory_limit = "4g"
+
+# Memory subsystem (vault / cognition / mender).
+# [memory]
+# vault_enabled = true
+# cognition_enabled = true
+# mender_enabled = true
+# scope = "default"
+# max_context_chars = 4000
+
+# Task queue.
+# [tasks]
+# enabled = true
+# max_parallel = 2
+# default_timeout_secs = 900
+# db_path = "bkgcrewcli/tasks.db"
+# auto_chain = true
 "#
+    }
+
+    /// Write the settings to a TOML file (owner-only permissions on Unix).
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
+        if let Some(parent) = path.parent() { std::fs::create_dir_all(parent)?; }
+        let body = toml::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        std::fs::write(path, body)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
+        Ok(())
     }
 
     /// Resolve the default agent from settings.
@@ -224,6 +368,8 @@ impl Settings {
             AgentKind::OpenCode => "opencode",
             AgentKind::Codex => "codex",
             AgentKind::Cursor => "cursor",
+            AgentKind::Pi => "pi",
+            AgentKind::Copilot => "copilot",
         };
         self.agents.get(key)
     }
@@ -349,6 +495,8 @@ impl ProjectConfig {
             AgentKind::OpenCode => "opencode",
             AgentKind::Codex => "codex",
             AgentKind::Cursor => "cursor",
+            AgentKind::Pi => "pi",
+            AgentKind::Copilot => "copilot",
         };
         self.agents.get(key)
     }

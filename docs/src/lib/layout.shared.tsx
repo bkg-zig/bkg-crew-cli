@@ -3,12 +3,12 @@ import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
-      title: 'harness',
+      title: 'bkgcrewcli',
     },
     links: [
       {
         text: 'GitHub',
-        url: 'https://github.com/ayshptk/harness-cli',
+        url: 'https://github.com/bkg-zig/bkg-crew-cli',
       },
     ],
   };

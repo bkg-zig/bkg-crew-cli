@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How harness works internally — adapters, process management, and the event pipeline
+description: How bkgcrewcli works internally — adapters, process management, and the event pipeline
 ---
 
 ## Data flow
@@ -56,7 +56,7 @@ Model name → per-agent model ID mapping. Three layers merged in priority order
 
 ### SessionLogger
 
-Tees events to NDJSON files at `~/.local/share/harness/sessions/` with metadata sidecar files.
+Tees events to NDJSON files at `~/.local/share/bkgcrewcli/sessions/` with metadata sidecar files.
 
 ## Crate layout
 
@@ -72,7 +72,7 @@ src/
 ├── runner.rs        # AgentRunner trait + binary resolution
 ├── process.rs       # spawn_and_stream() + ChildGuard
 ├── normalize.rs     # Text normalization utilities
-├── settings.rs      # Config file support (harness.toml + legacy)
+├── settings.rs      # Config file support (bkgcrewcli.toml + legacy)
 ├── logger.rs        # Session NDJSON logging
 └── agents/
     ├── mod.rs       # create_runner() factory
@@ -110,3 +110,62 @@ The adapters handle different JSON schemas:
 - **Codex**: JSONL with `type` field (thread.started, item.created, thread.completed)
 - **OpenCode**: Variable JSON shapes with fallback parsing
 - **Cursor**: NDJSON with nested `*ToolCall` keys
+
+## Native gateway (bkgcrewcli serve)
+
+Since v0.1.x, `bkgcrewcli serve` hosts the integrated provider gateway inside the
+bkgcrewcli process. It replaces an external proxy (e.g. an instance of
+`bkg-zig/nim-proxy`) with a first-party Rust module.
+
+### Public gateway routes
+
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+- `POST /v1/messages` (Anthropic-compatible, incl. translation from OpenAI-style bodies)
+- `POST /v1/messages/count_tokens`
+- `GET /usage`
+- `GET /api/health`
+
+### Scoped routes
+
+- `POST /:provider/v1/chat/completions` (and the other scoped endpoints)
+- Provider-scoped model lists and chat requests rewrite `provider/model` references
+  to the configured gateway provider before dispatch.
+
+### Admin / operator routes
+
+- `GET/POST /admin/app-config`, `GET /admin/doctor`, `POST /admin/config`
+- `POST /admin/config/model-mappings`
+- `GET /api/tokens`, `GET /api/providers`
+- Admin access is gated by the gateway admin key (`x-api-key`).
+
+### Auth and tokens
+
+- Gateway accepts static admin/gateway API keys plus scoped crew tokens (`bkgc_*`).
+- Tokens are persisted in the token store; revoking a token immediately stops
+  acceptance. Empty keys mean open mode; `bkgc_*` tokens must validate.
+
+### Streaming and usage
+
+- OpenAI-compatible upstream: true SSE pass-through.
+- Anthropic-compatible upstream: buffered responses with SSE event emulation.
+- Usage is recorded per request attempt (incl. retries/hedges where applicable).
+
+See the repository docs `docs/gateway-plugins.md` and
+`docs/design/crew-lanes-memory-integration.md` for design background.
+
+## Web UI
+
+`bkgcrewcli serve` also serves the native neon terminal console from
+`webui/dist/` (static assets: `index.html`, `app.js`, `style.css`).
+
+- Admin token gate in the top bar; unlocks Gateway/Admin menus.
+- Pages: dashboard, agents, run, metrics, usage, tokens, gateway, providers,
+  mappings, settings, sandbox, doctor.
+- Terminal-style rendering: `$ cmd`, `→ out`, `# comment`, blinking cursor.
+- Neon palette per area/role; responsive breakpoints ~1080/900/760/430.
+- Sidebar collapse (icons only) and About accordion.
+
+See the repository docs `docs/gateway-plugins.md` and
+`docs/design/crew-lanes-memory-integration.md` for design background.

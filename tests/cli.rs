@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
-fn harness_cmd() -> Command {
+fn bkgcrewcli_cmd() -> Command {
     Command::cargo_bin("bkgcrewcli").unwrap()
 }
 
@@ -9,7 +9,7 @@ fn harness_cmd() -> Command {
 
 #[test]
 fn help_flag_shows_usage() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .arg("--help")
         .assert()
         .success()
@@ -18,7 +18,7 @@ fn help_flag_shows_usage() {
 
 #[test]
 fn version_flag() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .arg("--version")
         .assert()
         .success()
@@ -30,12 +30,12 @@ fn version_flag() {
 #[test]
 fn list_command_runs() {
     // Should always succeed, listing whatever agents are installed.
-    harness_cmd().arg("list").assert().success();
+    bkgcrewcli_cmd().arg("list").assert().success();
 }
 
 #[test]
 fn list_command_json() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args(["list", "--json"])
         .assert()
         .success()
@@ -46,7 +46,7 @@ fn list_command_json() {
 
 #[test]
 fn check_unknown_agent_fails() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args(["check", "nonexistent"])
         .assert()
         .failure()
@@ -57,7 +57,7 @@ fn check_unknown_agent_fails() {
 fn check_accepts_all_agent_names() {
     // These should at least parse correctly (exit 0 if installed, 1 if not).
     for name in &["claude", "opencode", "codex", "cursor"] {
-        let result = harness_cmd().args(["check", name]).assert();
+        let result = bkgcrewcli_cmd().args(["check", name]).assert();
         // The exit code depends on whether the agent is installed, but
         // the command itself should not crash or fail to parse.
         let output = result.get_output().clone();
@@ -78,7 +78,7 @@ fn check_accepts_all_agent_names() {
 
 #[test]
 fn run_rejects_unknown_agent() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args(["run", "--agent", "foobar", "--prompt", "hello"])
         .assert()
         .failure()
@@ -87,7 +87,7 @@ fn run_rejects_unknown_agent() {
 
 #[test]
 fn run_rejects_unknown_permission_mode() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args([
             "run",
             "--agent", "claude",
@@ -101,7 +101,7 @@ fn run_rejects_unknown_permission_mode() {
 
 #[test]
 fn run_rejects_unknown_output_format() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args([
             "run",
             "--agent", "claude",
@@ -118,7 +118,7 @@ fn run_accepts_all_permission_modes() {
     // These should fail because the agent binary isn't available in CI,
     // but they should get past argument parsing.
     for mode in &["full-access", "full", "yolo", "default", "read-only", "readonly", "plan"] {
-        let result = harness_cmd()
+        let result = bkgcrewcli_cmd()
             .args([
                 "run",
                 "--agent", "claude",
@@ -142,7 +142,7 @@ fn run_accepts_all_permission_modes() {
 #[test]
 fn run_accepts_all_output_formats() {
     for fmt in &["text", "json", "stream-json", "markdown"] {
-        let result = harness_cmd()
+        let result = bkgcrewcli_cmd()
             .args([
                 "run",
                 "--agent", "claude",
@@ -163,7 +163,7 @@ fn run_accepts_all_output_formats() {
 
 #[test]
 fn run_invalid_cwd_fails() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args([
             "run",
             "--agent", "claude",
@@ -178,7 +178,7 @@ fn run_invalid_cwd_fails() {
 
 #[test]
 fn no_subcommand_shows_help() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .assert()
         .failure()
         .stderr(predicate::str::contains("Usage"));
@@ -189,7 +189,7 @@ fn no_subcommand_shows_help() {
 #[test]
 fn dry_run_prints_command_info() {
     // dry-run should succeed even if the agent binary isn't installed.
-    let result = harness_cmd()
+    let result = bkgcrewcli_cmd()
         .args([
             "run",
             "--agent", "claude",
@@ -212,7 +212,7 @@ fn dry_run_prints_command_info() {
 
 #[test]
 fn run_accepts_verbose_flag() {
-    let result = harness_cmd()
+    let result = bkgcrewcli_cmd()
         .args([
             "run",
             "--agent", "claude",
@@ -236,7 +236,7 @@ fn run_accepts_verbose_flag() {
 
 #[test]
 fn check_diagnose_shows_info() {
-    let result = harness_cmd()
+    let result = bkgcrewcli_cmd()
         .args(["check", "claude", "--diagnose"])
         .assert();
 
@@ -252,7 +252,7 @@ fn check_diagnose_shows_info() {
 
 #[test]
 fn check_diagnose_json() {
-    let result = harness_cmd()
+    let result = bkgcrewcli_cmd()
         .args(["check", "claude", "--diagnose", "--json"])
         .assert();
 
@@ -269,7 +269,7 @@ fn check_diagnose_json() {
 
 #[test]
 fn models_subcommand_help() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args(["models", "--help"])
         .assert()
         .success()
@@ -278,7 +278,7 @@ fn models_subcommand_help() {
 
 #[test]
 fn models_list_runs() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args(["models", "list"])
         .assert()
         .success();
@@ -286,7 +286,7 @@ fn models_list_runs() {
 
 #[test]
 fn models_path_runs() {
-    harness_cmd()
+    bkgcrewcli_cmd()
         .args(["models", "path"])
         .assert()
         .success()
@@ -298,7 +298,7 @@ fn models_path_runs() {
 #[test]
 fn run_accepts_output_file_flag() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
-    let result = harness_cmd()
+    let result = bkgcrewcli_cmd()
         .args([
             "run",
             "--agent", "claude",

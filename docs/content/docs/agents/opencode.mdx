@@ -1,6 +1,6 @@
 ---
 title: OpenCode
-description: Using OpenCode with harness — flags, output format, and event mapping
+description: Using OpenCode with bkgcrewcli — flags, output format, and event mapping
 ---
 
 OpenCode is an open-source terminal-based AI coding assistant. It supports multiple LLM providers (Anthropic, OpenAI, Google, etc.).
@@ -19,9 +19,9 @@ npm i -g opencode-ai@latest
 opencode run --format json "explain this codebase"
 ```
 
-## How harness maps to OpenCode
+## How bkgcrewcli maps to OpenCode
 
-| harness | OpenCode |
+| bkgcrewcli | OpenCode |
 |---------|----------|
 | `PermissionMode::FullAccess` | Default — `run` auto-approves |
 | `PermissionMode::ReadOnly` | `--agent plan` |
@@ -109,7 +109,7 @@ The `reason` field: `"stop"` means the agent is done, `"tool-calls"` means more 
 
 ## Event mapping
 
-| OpenCode event | harness event |
+| OpenCode event | bkgcrewcli event |
 |----------------|---------------|
 | `step_start` | `SessionStart` |
 | `text` | `Message` (role: Assistant) |

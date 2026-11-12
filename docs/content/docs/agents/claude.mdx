@@ -1,6 +1,6 @@
 ---
 title: Claude Code
-description: Using Claude Code with harness — flags, output format, and event mapping
+description: Using Claude Code with bkgcrewcli — flags, output format, and event mapping
 ---
 
 Claude Code is Anthropic's official CLI for Claude. It supports both interactive and headless operation.
@@ -21,9 +21,9 @@ Claude Code's headless mode is invoked with the `-p` (print) flag:
 claude -p "explain this codebase" --output-format stream-json --verbose
 ```
 
-## How harness maps to Claude Code
+## How bkgcrewcli maps to Claude Code
 
-| harness | Claude Code |
+| bkgcrewcli | Claude Code |
 |---------|-------------|
 | `PermissionMode::FullAccess` | `--dangerously-skip-permissions` |
 | `PermissionMode::ReadOnly` | `--permission-mode plan` |

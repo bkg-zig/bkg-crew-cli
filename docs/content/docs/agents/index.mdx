@@ -1,9 +1,9 @@
 ---
 title: Supported Agents
-description: Overview of the four coding agent backends harness supports
+description: Overview of the four coding agent backends bkgcrewcli supports
 ---
 
-Harness supports four coding agent CLIs. Each has its own adapter that translates the agent's native output into the unified event stream.
+bkgcrewcli supports four coding agent CLIs. Each has its own adapter that translates the agent's native output into the unified event stream.
 
 ## Agent comparison
 
@@ -20,16 +20,16 @@ Harness supports four coding agent CLIs. Each has its own adapter that translate
 
 ## Auto-detection
 
-If you omit `--agent`, harness will:
-1. Check your project config (`harness.toml`)
+If you omit `--agent`, bkgcrewcli will:
+1. Check your project config (`bkgcrewcli.toml`)
 2. Check legacy config files
 3. Scan for available agents — if exactly one is installed, use it
 4. Error if multiple agents are found (you must specify)
 
 ## Binary resolution
 
-For each agent, harness searches for the binary in this order:
+For each agent, bkgcrewcli searches for the binary in this order:
 1. Explicit path from `--binary` flag or config
-2. Project config (`harness.toml`) agent-specific binary path
+2. Project config (`bkgcrewcli.toml`) agent-specific binary path
 3. Legacy settings file
 4. PATH lookup using all candidate binary names

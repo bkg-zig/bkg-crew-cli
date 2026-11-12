@@ -1,6 +1,6 @@
 ---
 title: Quick Start
-description: Run your first coding agent task with harness
+description: Run your first coding agent task with bkgcrewcli
 ---
 
 ## Your first run
@@ -8,7 +8,7 @@ description: Run your first coding agent task with harness
 Pick an agent and give it a prompt:
 
 ```bash
-harness run --agent claude --prompt "explain this codebase"
+bkgcrewcli run --agent claude --prompt "explain this codebase"
 ```
 
 Output streams as NDJSON (one JSON object per line) to stdout. Each line is a unified event.
@@ -18,17 +18,17 @@ Output streams as NDJSON (one JSON object per line) to stdout. Each line is a un
 Instead of remembering exact model IDs, use aliases:
 
 ```bash
-harness run --agent claude --model sonnet --prompt "fix the bug in main.rs"
+bkgcrewcli run --agent claude --model sonnet --prompt "fix the bug in main.rs"
 ```
 
 The alias `sonnet` resolves to `claude-sonnet-4-5-20250929` for Claude. See [Model Registry](/docs/configuration/model-registry) for all aliases.
 
 ## Dry-run mode
 
-See exactly what command harness would execute without running it:
+See exactly what command bkgcrewcli would execute without running it:
 
 ```bash
-harness run --agent claude --model sonnet --prompt "hello" --dry-run
+bkgcrewcli run --agent claude --model sonnet --prompt "hello" --dry-run
 ```
 
 This prints the resolved binary path, arguments (with model IDs resolved), environment variables, and working directory.
@@ -36,55 +36,55 @@ This prints the resolved binary path, arguments (with model IDs resolved), envir
 ## Pipe prompts from stdin
 
 ```bash
-echo "explain this codebase" | harness run --agent claude
+echo "explain this codebase" | bkgcrewcli run --agent claude
 ```
 
 Or read from a file:
 
 ```bash
-harness run --agent claude --prompt-file task.md
+bkgcrewcli run --agent claude --prompt-file task.md
 ```
 
 ## Check agent availability
 
 ```bash
 # List all agents with version info
-harness list
-harness list --json
+bkgcrewcli list
+bkgcrewcli list --json
 
 # Check a specific agent
-harness check claude
-harness check claude --capabilities
+bkgcrewcli check claude
+bkgcrewcli check claude --capabilities
 ```
 
 ## Output formats
 
-Harness supports multiple output formats:
+bkgcrewcli supports multiple output formats:
 
 ```bash
 # NDJSON (default) — one JSON event per line
-harness run --agent claude --prompt "hello"
+bkgcrewcli run --agent claude --prompt "hello"
 
 # Pretty text
-harness run --agent claude --prompt "hello" --format text
+bkgcrewcli run --agent claude --prompt "hello" --format text
 
 # Single JSON object at the end
-harness run --agent claude --prompt "hello" --format json
+bkgcrewcli run --agent claude --prompt "hello" --format json
 
 # Write to file in addition to stdout
-harness run --agent claude --prompt "hello" --output-file run.ndjson
+bkgcrewcli run --agent claude --prompt "hello" --output-file run.ndjson
 ```
 
 ## Permission modes
 
-By default, harness runs agents in full-access mode (auto-approve everything). For read-only analysis:
+By default, bkgcrewcli runs agents in full-access mode (auto-approve everything). For read-only analysis:
 
 ```bash
-harness run --agent claude --permissions read-only --prompt "analyze this code"
+bkgcrewcli run --agent claude --permissions read-only --prompt "analyze this code"
 ```
 
 ## Next steps
 
-- [Configure defaults with harness.toml](/docs/configuration/harness-toml)
+- [Configure defaults with bkgcrewcli.toml](/docs/configuration/bkgcrewcli-toml)
 - [Learn about each agent's specifics](/docs/agents)
 - [Understand the event stream format](/docs/reference/events)

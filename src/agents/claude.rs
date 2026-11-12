@@ -82,11 +82,6 @@ impl AgentRunner for ClaudeRunner {
         args
     }
 
-    fn build_env(&self, _config: &TaskConfig) -> Vec<(String, String)> {
-        // Claude Code reads ANTHROPIC_API_KEY from the environment directly.
-        vec![]
-    }
-
     async fn run(
         &self,
         config: &TaskConfig,

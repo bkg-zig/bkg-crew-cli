@@ -1,6 +1,6 @@
 ---
 title: Model Registry
-description: How harness resolves human-friendly model names to exact model IDs
+description: How bkgcrewcli resolves human-friendly model names to exact model IDs
 ---
 
 The model registry maps human-friendly names (like `sonnet`) to the exact model ID strings each agent CLI expects (like `claude-sonnet-4-5-20250929`).
@@ -13,10 +13,10 @@ The model registry maps human-friendly names (like `sonnet`) to the exact model 
 
 ## Resolution flow
 
-When you run `harness run --agent claude --model sonnet`:
+When you run `bkgcrewcli run --agent claude --model sonnet`:
 
-1. Check `harness.toml` `[models.sonnet]` — if found with a `claude` key, use it
-2. Check `~/.harness/models.toml` — cached registry from GitHub
+1. Check `bkgcrewcli.toml` `[models.sonnet]` — if found with a `claude` key, use it
+2. Check `~/.bkgcrewcli/models.toml` — cached registry from GitHub
 3. Check builtin `models.toml` — compiled into the binary
 4. If found but no key for the agent — warn, pass name through unchanged
 5. If not found — pass the name through unchanged (the agent gets the raw string)
@@ -40,30 +40,30 @@ Each agent key (`claude`, `codex`, `opencode`, `cursor`) maps to the model ID th
 
 Three layers, merged in priority order:
 
-1. **Project config** — `harness.toml` `[models.*]` sections (highest priority)
-2. **Cached registry** — `~/.harness/models.toml` (fetched from GitHub, 24h TTL)
+1. **Project config** — `bkgcrewcli.toml` `[models.*]` sections (highest priority)
+2. **Cached registry** — `~/.bkgcrewcli/models.toml` (fetched from GitHub, 24h TTL)
 3. **Builtin registry** — compiled into the binary (fallback)
 
 ## Managing the registry
 
 ```bash
 # List all known models
-harness models list
-harness models list --agent claude --json
+bkgcrewcli models list
+bkgcrewcli models list --agent claude --json
 
 # Resolve an alias
-harness models resolve sonnet --agent claude
+bkgcrewcli models resolve sonnet --agent claude
 
 # Update the cached registry
-harness models update
+bkgcrewcli models update
 
 # Show the registry file path
-harness models path
+bkgcrewcli models path
 ```
 
 ## Adding custom aliases
 
-Add model aliases to your `harness.toml`:
+Add model aliases to your `bkgcrewcli.toml`:
 
 ```toml
 [models.fast]
@@ -77,4 +77,4 @@ provider = "anthropic"
 claude = "claude-opus-4-6"
 ```
 
-Then use them: `harness run --agent claude --model fast --prompt "quick question"`
+Then use them: `bkgcrewcli run --agent claude --model fast --prompt "quick question"`

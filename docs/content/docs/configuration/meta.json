@@ -1,4 +1,4 @@
 {
   "title": "Configuration",
-  "pages": ["harness-toml", "model-registry"]
+  "pages": ["bkgcrewcli-toml", "model-registry"]
 }

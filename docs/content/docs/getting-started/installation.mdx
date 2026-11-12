@@ -1,47 +1,47 @@
 ---
 title: Installation
-description: Install harness via curl, cargo, or build from source
+description: Install bkgcrewcli via curl, cargo, or build from source
 ---
 
 ## Recommended: curl installer
 
-The fastest way to install harness:
+The fastest way to install bkgcrewcli:
 
 ```bash
-curl -fsSL https://harness.lol/install.sh | sh
+curl -fsSL https://bkgcrewcli.lol/install.sh | sh
 ```
 
-This downloads the latest prebuilt binary for your platform and installs it to `~/.harness/bin/harness`. You may need to add `~/.harness/bin` to your PATH.
+This downloads the latest prebuilt binary for your platform and installs it to `~/.bkgcrewcli/bin/bkgcrewcli`. You may need to add `~/.bkgcrewcli/bin` to your PATH.
 
 ## Via crates.io
 
 If you have Rust installed:
 
 ```bash
-cargo install harnesscli
+cargo install bkgcrewclicli
 ```
 
-The crate is published as `harnesscli` but the binary is named `harness`.
+The crate is published as `bkgcrewclicli` but the binary is named `bkgcrewcli`.
 
 ## Build from source
 
 ```bash
-git clone https://github.com/ayshptk/harness-cli.git
-cd harness
+git clone https://github.com/ayshptk/bkgcrewcli-cli.git
+cd bkgcrewcli
 cargo build --release
 ```
 
-The binary will be at `target/release/harness`.
+The binary will be at `target/release/bkgcrewcli`.
 
 ## Verify installation
 
 ```bash
-harness --version
+bkgcrewcli --version
 ```
 
 ## Prerequisites
 
-Harness itself has no runtime dependencies, but you need at least one agent CLI installed:
+bkgcrewcli itself has no runtime dependencies, but you need at least one agent CLI installed:
 
 - **Claude Code**: `npm install -g @anthropic-ai/claude-code`
 - **Codex**: `npm install -g @openai/codex`
@@ -51,5 +51,5 @@ Harness itself has no runtime dependencies, but you need at least one agent CLI 
 Check which agents are available:
 
 ```bash
-harness list
+bkgcrewcli list
 ```
