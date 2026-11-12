@@ -11,23 +11,34 @@
   --line: #1b1b28;
   --line-soft: #14141f;
 
-  /* neon palette */
-  --cyan: #00e5ff;
-  --mint: #3dffb0;
-  --lime: #b8f531;
-  --violet: #b06cff;
-  --blue: #4d8dff;
-  --magenta: #ff4dd8;
-  --orange: #ff8a3d;
-  --gold: #ffd24d;
-  --red: #ff4d5e;
+  /* neon palette — aligned to skidel design system */
+  --cyan: #00ffcc;
+  --mint: #4dffb8;
+  --lime: #b5ff2b;
+  --violet: #b98cff;
+  --blue: #4dc3ff;
+  --magenta: #ff00ff;
+  --orange: #ff8800;
+  --gold: #ffc94d;
+  --red: #ff4d6d;
   --teal: #00e5a0;
   --rose: #ff5ca8;
 
-  /* body text reads mint-tinted, everything glows */
-  --txt: #c9ded4;
-  --dim: #6d7f79;
-  --faint: #46524e;
+  /* extended skidel neon set */
+  --yellow: #ffff00;
+  --pink: #ff5fd7;
+  --terminal-green: #00ff41;
+  --pistachio: #9dff9a;
+  --coral: #ff7f6e;
+  --purple: #d77bff;
+  --azure: #6f8cff;
+  --peach: #ffb38a;
+  --ice: #e8f4ff;
+
+  /* body text reads skidel neon cyan, everything glows */
+  --txt: #a8f0ff;
+  --dim: #7d8f96;
+  --faint: #3f4a45;
 
   --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
   --rail-w: 54px;
@@ -48,15 +59,15 @@ html, body {
 
 body {
   background-image:
-    radial-gradient(1100px 500px at 85% -10%, rgba(0, 229, 255, .055), transparent 60%),
-    radial-gradient(900px 480px at -10% 110%, rgba(176, 108, 255, .05), transparent 60%);
+    radial-gradient(1100px 500px at 85% -10%, rgba(0, 255, 204, .055), transparent 60%),
+    radial-gradient(900px 480px at -10% 110%, rgba(185, 140, 255, .05), transparent 60%);
   background-attachment: fixed;
 }
 
-::selection { background: rgba(0, 229, 255, .25); color: #fff; }
+::selection { background: rgba(0, 255, 204, .25); color: #fff; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: #1e2a2a; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #2a3b3b; }
+::-webkit-scrollbar-thumb { background: #12201f; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #1d3a36; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 a { color: var(--cyan); text-decoration: none; }
@@ -74,6 +85,15 @@ a { color: var(--cyan); text-decoration: none; }
 .ac-dim     { --ac: var(--dim); }
 .ac-teal    { --ac: var(--teal); }
 .ac-rose    { --ac: var(--rose); }
+.ac-yellow  { --ac: var(--yellow); }
+.ac-pink    { --ac: var(--pink); }
+.ac-terminal-green { --ac: var(--terminal-green); }
+.ac-pistachio { --ac: var(--pistachio); }
+.ac-coral   { --ac: var(--coral); }
+.ac-purple  { --ac: var(--purple); }
+.ac-azure   { --ac: var(--azure); }
+.ac-peach   { --ac: var(--peach); }
+.ac-ice     { --ac: var(--ice); }
 
 .neon { color: var(--ac); text-shadow: 0 0 6px color-mix(in srgb, var(--ac) 55%, transparent), 0 0 20px color-mix(in srgb, var(--ac) 28%, transparent); }
 .lead, h1, h2, h3, .win-title, .brand, .nav-item, .stat-label, .sec-title, .pill, .btn, .field label, th {
