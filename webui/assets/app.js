@@ -215,7 +215,7 @@
     $('#sidebarNav').innerHTML = NAV.map((s) => `
       <div class="ac-violet sec-title">${esc(s.sec)}</div>
       ${s.items.map((i) => `
-        <div class="ac-${i.ac} nav-item ${i.id === S.page ? 'on' : ''}" data-page="${i.id}">
+        <div class="ac-${i.ac} nav-item ${i.id === S.page ? 'on' : ''}" data-page="${i.id}" title="${esc(i.label)}">
           <span class="ic">${i.ic}</span> <span class="lbl">${esc(i.label)}</span>
           ${i.admin && !S.unlocked ? '<span class="lock">🔒</span>' : ''}
         </div>`).join('')}
@@ -235,16 +235,23 @@
       aboutToggle.style.background = open ? '' : 'rgba(255, 210, 77, .06)';
     });
 
-    // sidebar collapse (icons stay, labels hide)
+    // sidebar collapse (icons stay, labels hide) — Skidel-style, persisted per browser
     const sideToggle = $('#sideCollapse');
     const sidebarEl = $('#sidebar');
-    sideToggle.addEventListener('click', () => {
-      const collapsed = sidebarEl.classList.toggle('collapsed');
+    const SIDEBAR_COLLAPSED_KEY = 'bkg_crew_sidebar_collapsed';
+    const applyCollapsed = (collapsed) => {
+      sidebarEl.classList.toggle('collapsed', collapsed);
       sideToggle.classList.toggle('on', collapsed);
       sideToggle.style.borderColor = collapsed ? 'rgba(255, 210, 77, .45)' : '';
       sideToggle.style.color = collapsed ? 'var(--gold)' : '';
       sideToggle.style.background = collapsed ? 'rgba(255, 210, 77, .06)' : '';
       sideToggle.textContent = collapsed ? '▤' : '❐';
+      try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) { /* storage blocked */ }
+    };
+    try { if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') applyCollapsed(true); } catch (e) { /* storage blocked */ }
+    sideToggle.addEventListener('click', () => {
+      const collapsed = sidebarEl.classList.contains('collapsed');
+      applyCollapsed(!collapsed);
     });
   }
 
