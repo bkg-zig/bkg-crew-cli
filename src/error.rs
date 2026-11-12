@@ -38,9 +38,6 @@ pub enum Error {
     #[error("failed to fetch models registry: {0}")]
     ModelsFetch(String),
 
-    #[error("SQLx error: {0}")]
-    Sqlx(#[from] sqlx::Error),
-
     #[error("migration error: {0}")]
     Migration(String),
 
@@ -69,7 +66,6 @@ impl Error {
             Error::Database(_) => "E012",
             Error::ModelsParse(_) => "E010",
             Error::ModelsFetch(_) => "E011",
-            Error::Sqlx(_) => "E014",
             Error::Migration(_) => "E015",
             Error::NotFound(_) => "E016",
             Error::Admission(_) => "E013",

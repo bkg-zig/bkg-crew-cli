@@ -481,7 +481,7 @@ impl AdmissionPersist {
                 version INTEGER PRIMARY KEY,
                 applied_at TEXT NOT NULL
             );"#,
-        ).execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+        ).execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
 
         // Run migrations
         self.migrate().await?;
@@ -508,7 +508,7 @@ impl AdmissionPersist {
                 FOREIGN KEY (pool_id) REFERENCES admission_pools(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_admission_lanes_pool ON admission_lanes(pool_id);"#,
-        ).execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+        ).execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
 
         // Create model governor state table
         sqlx::query(
@@ -517,7 +517,7 @@ impl AdmissionPersist {
                 max_in_flight INTEGER NOT NULL,
                 in_flight INTEGER NOT NULL DEFAULT 0
             );"#,
-        ).execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+        ).execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
 
         Ok(())
     }
@@ -529,7 +529,7 @@ impl AdmissionPersist {
         // Get current version
         let pool = self.pool.lock().unwrap_or_else(|p| p.into_inner());
         let current: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM admission_schema_version")
-            .fetch_optional(&pool).await
+            .fetch_optional(&*pool).await
             .map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?
             .flatten();
 
@@ -546,7 +546,7 @@ impl AdmissionPersist {
                 )
                 .bind(CURRENT_VERSION)
                 .bind(now)
-                .execute(&pool).await
+                .execute(&*pool).await
                 .map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
             }
         } else if current > CURRENT_VERSION {
@@ -572,7 +572,7 @@ impl AdmissionPersist {
         .bind(window.as_secs() as i64)
         .bind(now.clone())
         .bind(now)
-        .execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+        .execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
         Ok(())
     }
 
@@ -603,16 +603,16 @@ impl AdmissionPersist {
         .bind(sends_json)
         .bind(cooldown_str)
         .bind(error_class_str)
-        .execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+        .execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
         Ok(())
     }
 
     /// Load all pools and their lanes.
     pub async fn load_all(&self) -> Result<Vec<PersistedPool>, AdmissionError> {
         let pool = self.pool.lock().unwrap_or_else(|p| p.into_inner());
-        let pool_rows = sqlx::query("SELECT * FROM admission_pools").fetch_all(&pool).await
+        let pool_rows = sqlx::query("SELECT * FROM admission_pools").fetch_all(&*pool).await
             .map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
-        let lane_rows = sqlx::query("SELECT * FROM admission_lanes").fetch_all(&pool).await
+        let lane_rows = sqlx::query("SELECT * FROM admission_lanes").fetch_all(&*pool).await
             .map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
 
         let mut pools = Vec::new();
@@ -671,7 +671,7 @@ impl AdmissionPersist {
         let pool = self.pool.lock().unwrap_or_else(|p| p.into_inner());
         sqlx::query("DELETE FROM admission_pools WHERE id = ?")
             .bind(pool_id)
-            .execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+            .execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
         Ok(())
     }
 
@@ -685,7 +685,7 @@ impl AdmissionPersist {
         .bind(model)
         .bind(max_in_flight as i64)
         .bind(in_flight as i64)
-        .execute(&pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
+        .execute(&*pool).await.map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
         Ok(())
     }
 
@@ -693,7 +693,7 @@ impl AdmissionPersist {
     pub async fn load_model_governor(&self) -> Result<Vec<(String, u32, u32)>, AdmissionError> {
         let pool = self.pool.lock().unwrap_or_else(|p| p.into_inner());
         let rows = sqlx::query("SELECT model, max_in_flight, in_flight FROM admission_model_governor")
-            .fetch_all(&pool).await
+            .fetch_all(&*pool).await
             .map_err(|e| AdmissionError::InvalidConfig(e.to_string()))?;
 
         let mut result = Vec::new();
@@ -1020,6 +1020,8 @@ impl AdmissionRegistry {
         let deadline = Instant::now() + max_wait;
         let cancel_token = tokio_util::sync::CancellationToken::new();
 
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
         let request = QueuedRequest {
             id,
             provider_id: provider_id.to_string(),
@@ -1029,10 +1031,11 @@ impl AdmissionRegistry {
             model_max_concurrency,
             deadline,
             cancel_token: cancel_token.clone(),
-            response_tx: tokio::sync::oneshot::channel().0, // placeholder, will be replaced in enqueue
+            response_tx: tx,
         };
 
-        self.queue.enqueue(request).await
+        self.queue.enqueue(request).await?;
+        rx.await.map_err(|_| AdmissionError::InvalidConfig("channel closed".into()))?
     }
 
     /// Cool down the lane that sent a rate-limited request in the
@@ -1069,10 +1072,14 @@ pub async fn global_registry_with_persist(path: Option<std::path::PathBuf>) -> R
     if let Some(p) = path {
         let persist = Some(AdmissionPersist::open(p).await?);
         let registry = AdmissionRegistry::new_with_persist(persist).await?;
-        Ok(REGISTRY.get_or_init(|| Arc::new(registry)).clone())
+        let arc = Arc::new(registry);
+        arc.start_worker();
+        Ok(REGISTRY.get_or_init(|| arc).clone())
     } else {
         let registry = AdmissionRegistry::new_with_persist(None).await?;
-        Ok(REGISTRY.get_or_init(|| Arc::new(registry)).clone())
+        let arc = Arc::new(registry);
+        arc.start_worker();
+        Ok(REGISTRY.get_or_init(|| arc).clone())
     }
 }
 
