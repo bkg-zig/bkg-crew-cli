@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use futures::StreamExt;
 use bkgcrewcli::{
+    admission::global_registry_with_persist,
     config::{AgentKind, OutputFormat, PermissionMode, TaskConfig},
     event::Event,
     keystore::{Keystore, ProviderUpdate},
@@ -157,6 +158,11 @@ enum Commands {
         #[command(subcommand)]
         action: ProviderAction,
     },
+    /// Manage provider pools (multi-key lane groups).
+    Pool {
+        #[command(subcommand)]
+        action: PoolAction,
+    },
     /// Start bkgcrewcli Web UI + API server (Dioxus webui/dist if built, else built-in UI).
     Serve {
         /// Host/interface to bind (default: 127.0.0.1)
@@ -298,6 +304,58 @@ enum ProviderAction {
         /// Model to use.
         #[arg(short, long)]
         model: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum PoolAction {
+    /// Create a new provider pool with multiple keys.
+    Add {
+        /// Pool name (unique identifier).
+        #[arg(short, long)]
+        name: String,
+
+        /// Provider ID (e.g., anthropic, openai).
+        #[arg(short, long)]
+        provider: String,
+
+        /// Model this pool serves.
+        #[arg(short, long)]
+        model: String,
+
+        /// Base URL for the provider.
+        #[arg(long)]
+        base_url: String,
+
+        /// Rate window in seconds (default: 60).
+        #[arg(long, default_value = "60")]
+        window_secs: u64,
+
+        /// Key references and RPM limits as key_id:rpm pairs (comma-separated).
+        /// Example: "key-1:40,key-2:40,key-3:40"
+        #[arg(long, value_delimiter = ',')]
+        lanes: Vec<String>,
+
+        /// Selection policy: least_loaded_sticky, round_robin, etc.
+        #[arg(long, default_value = "least_loaded_sticky")]
+        selection: String,
+    },
+    /// List all provider pools.
+    List,
+    /// Get a provider pool by name.
+    Get {
+        /// Pool name.
+        name: String,
+    },
+    /// Show pool status (lane usage, cooldowns, etc.).
+    Status {
+        /// Pool name.
+        name: String,
+    },
+    /// Delete a provider pool.
+    Delete {
+        /// Pool name.
+        name: String,
     },
 }
 
@@ -1332,6 +1390,146 @@ async fn main() -> ExitCode {
                             ExitCode::FAILURE
                         }
                     }
+                }
+            }
+        }
+        Commands::Pool { action } => match action {
+            PoolAction::Add { name, provider, model, base_url: _, window_secs, lanes, selection: _ } => {
+                // Use persistent registry with default DB path
+                let db_path = std::path::PathBuf::from("/srv/bkg/data/admission.db");
+                let registry = match global_registry_with_persist(Some(db_path)).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let pool_config = bkgcrewcli::admission::PoolConfig {
+                    provider_id: provider.clone(),
+                    model: model.clone(),
+                    window: std::time::Duration::from_secs(window_secs),
+                };
+                let lane_configs: Vec<_> = lanes.iter().map(|l| {
+                    let parts: Vec<&str> = l.split(':').collect();
+                    let key_id = parts[0].to_string();
+                    let rpm = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(40);
+                    bkgcrewcli::admission::LaneConfig { key_id, rpm_limit: rpm, enabled: true }
+                }).collect();
+                match bkgcrewcli::admission::ProviderPool::new(pool_config, lane_configs) {
+                    Ok(pool) => {
+                        // Use the provided name as the pool ID
+                        let mut pools = registry.pools().lock().unwrap_or_else(|p| p.into_inner());
+                        pools.insert(name.clone(), pool);
+                        // Persist the new pool
+                        if let Err(e) = registry.persist().await {
+                            eprintln!("error: {e}");
+                            return ExitCode::FAILURE;
+                        }
+                        println!("Pool created: {name} with {} lanes", lanes.len());
+                        ExitCode::SUCCESS
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        ExitCode::FAILURE
+                    }
+                }
+            }
+            PoolAction::List => {
+                let db_path = std::path::PathBuf::from("/srv/bkg/data/admission.db");
+                let registry = match global_registry_with_persist(Some(db_path)).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let pools = registry.pools().lock().unwrap_or_else(|p| p.into_inner());
+                if pools.is_empty() {
+                    println!("No pools configured.");
+                } else {
+                    println!("Configured pools:");
+                    for (id, pool) in pools.iter() {
+                        let status = pool.status();
+                        println!("  {id} — {} lanes", status.len());
+                        for lane in status {
+                            let cd = if lane.cooling_down { " [COOLDOWN]" } else { "" };
+                            println!("    {}: {}/{} rpm{}", lane.key_id, lane.in_window, lane.rpm_limit, cd);
+                        }
+                    }
+                }
+                ExitCode::SUCCESS
+            }
+            PoolAction::Get { name } => {
+                let db_path = std::path::PathBuf::from("/srv/bkg/data/admission.db");
+                let registry = match global_registry_with_persist(Some(db_path)).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let pools = registry.pools().lock().unwrap_or_else(|p| p.into_inner());
+                if let Some(pool) = pools.get(&name) {
+                    let status = pool.status();
+                    println!("Pool: {name}");
+                    println!("  Lanes: {}", status.len());
+                    for lane in status {
+                        let cd = if lane.cooling_down { " [COOLDOWN]" } else { "" };
+                        println!("  {}: {}/{} rpm{}", lane.key_id, lane.in_window, lane.rpm_limit, cd);
+                    }
+                } else {
+                    eprintln!("error: pool not found: {name}");
+                    return ExitCode::FAILURE;
+                }
+                ExitCode::SUCCESS
+            }
+            PoolAction::Status { name } => {
+                let db_path = std::path::PathBuf::from("/srv/bkg/data/admission.db");
+                let registry = match global_registry_with_persist(Some(db_path)).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let pools = registry.pools().lock().unwrap_or_else(|p| p.into_inner());
+                if let Some(pool) = pools.get(&name) {
+                    let status = pool.status();
+                    println!("Pool Status: {name}");
+                    for lane in status {
+                        let cd = if lane.cooling_down { " [COOLDOWN]" } else { "" };
+                        let err = lane.last_error_class.as_ref().map(|e| e.to_string()).unwrap_or("-".to_string());
+                        println!("  {}: {}/{} rpm{} last_error: {}", lane.key_id, lane.in_window, lane.rpm_limit, cd, err);
+                    }
+                    let model_name = name.split('/').nth(1).unwrap_or("");
+                    println!("  Model in-flight: {}", registry.governor().in_flight(model_name));
+                } else {
+                    eprintln!("error: pool not found: {name}");
+                    return ExitCode::FAILURE;
+                }
+                ExitCode::SUCCESS
+            }
+            PoolAction::Delete { name } => {
+                let db_path = std::path::PathBuf::from("/srv/bkg/data/admission.db");
+                let registry = match global_registry_with_persist(Some(db_path)).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+                let mut pools = registry.pools().lock().unwrap_or_else(|p| p.into_inner());
+                if pools.remove(&name).is_some() {
+                    // Persist the deletion
+                    if let Err(e) = registry.persist().await {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                    println!("Pool deleted: {name}");
+                    ExitCode::SUCCESS
+                } else {
+                    eprintln!("error: pool not found: {name}");
+                    ExitCode::FAILURE
                 }
             }
         }

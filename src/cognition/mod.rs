@@ -126,7 +126,7 @@ impl CognitionStore {
     }
 }
 
-fn kind_str(k: &SignalKind) -> &'static str {
+pub fn kind_str(k: &SignalKind) -> &'static str {
     match k {
         SignalKind::RunStart => "run_start",
         SignalKind::RunEnd => "run_end",
