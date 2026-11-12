@@ -201,16 +201,6 @@
   const skel = () => '<div class="skel">lade …</div>';
 
   /* ── shell rendering ─────────────────────────────────────────────── */
-  function renderRail() {
-    const it = findItem(S.page);
-    $('#railDots').innerHTML = NAV.flatMap((s) => s.items).map((i) => `
-      <div class="ac-${i.ac} rail-dot ${i.id === S.page ? 'on' : ''}" data-page="${i.id}" title="${esc(i.label)}">${i.ic}</div>
-    `).join('');
-    $('#railDots').querySelectorAll('[data-page]').forEach((el) => {
-      el.addEventListener('click', () => go(el.dataset.page));
-    });
-  }
-
   function renderSidebar() {
     $('#sidebarNav').innerHTML = NAV.map((s) => `
       <div class="ac-violet sec-title">${esc(s.sec)}</div>
@@ -1029,7 +1019,7 @@
     }
     S.page = page;
     const host = $('#page');
-    renderRail(); renderSidebar(); renderTopbar();
+    renderSidebar(); renderTopbar();
     host.innerHTML = `<div class="ac-cyan">${skel()}</div>`;
     window.history.replaceState(null, '', `#${page}`);
     try {
