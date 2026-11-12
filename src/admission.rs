@@ -456,7 +456,7 @@ impl Drop for ModelPermit {
 /// SQLite persistence for admission state.
 #[derive(Clone)]
 pub struct AdmissionPersist {
-    pool: SqlitePool,
+    pool: Arc<Mutex<SqlitePool>>,
 }
 
 impl AdmissionPersist {
@@ -859,6 +859,15 @@ impl AdmissionRegistry {
 
                 pools.insert(pp.id, pool);
             }
+
+            // Load model governor state
+            let governor_state = p.load_model_governor().await?;
+            {
+                let mut inner = registry.governor.inner.lock().unwrap_or_else(|p| p.into_inner());
+                for (model, max_in_flight, in_flight) in governor_state {
+                    inner.insert(model, ModelState { max_in_flight, in_flight });
+                }
+            }
         }
 
         Ok(registry)
@@ -945,12 +954,23 @@ impl AdmissionRegistry {
                 }).collect()
             };
 
+            // Collect governor state while holding lock
+            let governor_data: Vec<(String, u32, u32)> = {
+                let inner = self.governor.inner.lock().unwrap_or_else(|p| p.into_inner());
+                inner.iter().map(|(model, state)| (model.clone(), state.max_in_flight, state.in_flight)).collect()
+            };
+
             for (id, provider_id, model, window, status, lane_data) in pool_data {
                 p.save_pool(&id, &provider_id, &model, window).await?;
                 for (lane_status, (sends, cooldown_until, last_error_class)) in status.iter().zip(lane_data.iter()) {
                     p.save_lane(&id, &lane_status.key_id, lane_status.rpm_limit, lane_status.enabled,
                         sends, window, *cooldown_until, last_error_class.clone()).await?;
                 }
+            }
+
+            // Persist model governor state
+            for (model, max_in_flight, in_flight) in governor_data {
+                p.save_model_governor(&model, max_in_flight, in_flight).await?;
             }
         }
         Ok(())
