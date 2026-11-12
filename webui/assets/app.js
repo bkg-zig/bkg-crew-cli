@@ -223,19 +223,20 @@
     $('#sidebarNav').querySelectorAll('[data-page]').forEach((el) => {
       el.addEventListener('click', () => { go(el.dataset.page); closeSidebar(); });
     });
-    // about accordion
+
+    // about accordion (footer)
     const aboutToggle = $('#aboutToggle');
     const aboutPanel = $('#aboutPanel');
     aboutToggle.addEventListener('click', () => {
-      const open = aboutPanel.style.display === 'block';
-      aboutPanel.style.display = open ? 'none' : 'block';
+      const open = !aboutPanel.hidden;
+      aboutPanel.hidden = open;
       aboutToggle.classList.toggle('on', !open);
       aboutToggle.style.borderColor = open ? '' : 'rgba(255, 210, 77, .45)';
       aboutToggle.style.color = open ? '' : 'var(--gold)';
       aboutToggle.style.background = open ? '' : 'rgba(255, 210, 77, .06)';
     });
 
-    // sidebar collapse (icons stay, labels hide) — Skidel-style, persisted per browser
+    // sidebar collapse — toggle in header, persisted
     const sideToggle = $('#sideCollapse');
     const sidebarEl = $('#sidebar');
     const SIDEBAR_COLLAPSED_KEY = 'bkg_crew_sidebar_collapsed';
@@ -245,7 +246,6 @@
       sideToggle.style.borderColor = collapsed ? 'rgba(255, 210, 77, .45)' : '';
       sideToggle.style.color = collapsed ? 'var(--gold)' : '';
       sideToggle.style.background = collapsed ? 'rgba(255, 210, 77, .06)' : '';
-      sideToggle.textContent = collapsed ? '▤' : '❐';
       try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (e) { /* storage blocked */ }
     };
     try { if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') applyCollapsed(true); } catch (e) { /* storage blocked */ }

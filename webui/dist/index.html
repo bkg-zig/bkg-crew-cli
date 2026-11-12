@@ -5,34 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>bkgcrewcli · Gateway Console</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23050505'/%3E%3Cpath d='M16 5 L27 16 L16 27 L5 16 Z' fill='none' stroke='%2300e5ff' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23b06cff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23050505'/%3E%3Cpath d='M16 5 L27 16 L16 27 L5 16 Z' fill='none' stroke='%2300ffcc' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23b98cff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 <div class="shell">
-  <aside class="rail">
+  <aside class="rail" id="rail">
     <div class="brand" id="brand" title="Übersicht">◆</div>
     <nav class="rail-dots" id="railDots"></nav>
     <div class="rail-foot">BKGCREWCLI</div>
   </aside>
 
   <aside class="sidebar" id="sidebar">
-    <div class="side-head">Gateway Console</div>
+    <header class="sidebar-header">
+      <span class="sidebar-title">Gateway Console</span>
+      <button class="sidebar-toggle" id="sideCollapse" title="Sidebar einklappen/ausklappen" aria-label="Sidebar einklappen/ausklappen">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><polyline points="11 4 5 8 11 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
     <nav id="sidebarNav"></nav>
-    <div class="side-foot">
-      <div class="ac-gold side-head">About</div>
-      <div id="aboutPanel" class="ac-gold">
+    <footer class="sidebar-footer">
+      <div class="ac-gold nav-item" id="aboutToggle">ℹ About</div>
+      <div id="aboutPanel" class="about-panel ac-gold" hidden>
         <div class="tl cmd"><span class="p">$</span> bkgcrewcli --version<span class="cursor"></span></div>
         <div class="tl out">bkgcrewcli WebUI · Gateway Console</div>
         <div class="tl note"># native gateway + neon terminal ui · v0.1.8</div>
       </div>
-      <div class="ac-gold nav-item" id="aboutToggle">ℹ About</div>
-      <div class="ac-violet nav-item" id="sideCollapse">▤ Collapse</div>
-    </div>
+    </footer>
   </aside>
 
   <header class="topbar">
-    <button class="burger" id="burger" title="Navigation">≡</button>
+    <button class="burger" id="burger" title="Navigation" aria-label="Navigation">≡</button>
     <div class="crumb" id="crumb"></div>
     <span class="top-spacer"></span>
     <span class="health-pill ac-mint" id="healthPill"><i></i><span class="txt">live</span></span>
