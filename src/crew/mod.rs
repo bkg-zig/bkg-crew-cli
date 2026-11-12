@@ -1,11 +1,10 @@
-// Crew workflow orchestration
-// Manages multi-agent task DAGs with dependencies
+// Crew workflow orchestration: multi-agent task DAGs with dependencies,
+// bounded parallelism, retries, cancellation and optional durable storage.
 
-pub mod workflow;
-pub mod scheduler;
 pub mod config;
+pub mod scheduler;
+pub mod workflow;
 
-pub use workflow::{CrewWorkflow, CrewTask, CrewDefinition};
-pub use scheduler::{CrewScheduler, SchedulerConfig};
-pub use config::{CrewConfig, CrewSandboxConfig};
-pub use config as crew_config;
+pub use config::{AgentOverride, CrewConfig, CrewDefinition, CrewSandboxConfig, CrewSettings, CrewTaskDef};
+pub use scheduler::{CrewScheduler, SchedulerConfig, TaskExecutionResult};
+pub use workflow::{CrewWorkflow, WorkflowState, WorkflowStatus};

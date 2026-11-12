@@ -1,53 +1,38 @@
-// Crew scheduler - executes workflows with parallel/sequential task execution
+// Crew scheduler: executes a `CrewWorkflow` DAG with bounded parallelism,
+// retries, cancellation and optional durable task storage.
+//
+// Tasks run through the normal agent pipeline (`run_task_with_cancel` with a
+// `TaskConfig`), so crew execution inherits adapter parsing, the event
+// normalizer and process cancellation. No separate runner stack.
 
-use crate::crew::workflow::{CrewWorkflow, WorkflowState, WorkflowStatus, CrewSandboxConfig};
-use crate::task_queue::task::{Task, TaskStatus, TaskType, TaskPriority, TaskCreateParams};
-use crate::task_queue::storage::{TaskStorage, create_task_storage};
-use crate::config::sandbox::SandboxConfig;
-use crate::sandbox::runner::{SandboxRunner, SandboxMode, SandboxRunnerConfig};
-use crate::sandbox::template::TemplateManager;
-use crate::sandbox::cubesandbox::CubeSandboxClient;
-use crate::sandbox::shim::ContainerdShim;
-use crate::sandbox::SandboxConfig as SandboxConfigType;
-use crate::config::AgentKind;
-use crate::agents::create_runner;
-use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{RwLock, Semaphore};
-use tokio::time::{interval, timeout};
-use tracing::{info, debug, warn, error};
+
 use chrono::Utc;
+use futures::StreamExt;
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-/// Scheduler configuration
+use super::config::CrewTaskDef;
+use super::workflow::{CrewWorkflow, WorkflowState, WorkflowStatus};
+use crate::config::{AgentKind, SandboxConfig, TaskConfig};
+use crate::error::{Error, Result};
+use crate::event::Event;
+use crate::task_queue::storage::TaskStorage;
+use crate::task_queue::task::{Task, TaskPriority, TaskStatus, TaskType};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchedulerConfig {
-    /// Max parallel tasks per workflow
+    /// Max tasks running at the same time within one workflow.
     pub max_parallel: usize,
-    /// Default timeout for tasks (seconds)
     pub default_task_timeout: u64,
-    /// Max retries for failed tasks
     pub max_retries: u32,
-    /// Retry backoff base (seconds)
-    pub retry_backoff_base: u64,
-    /// Poll interval for task status (ms)
-    pub poll_interval_ms: u64,
-    /// Enable sandbox by default
-    pub sandbox_enabled: bool,
-    /// Default sandbox mode
-    pub default_sandbox_mode: String,
-    /// Default stack
-    pub default_stack: String,
-    /// Default project
-    pub default_project: String,
-    /// Auto-commit on success
-    pub auto_commit: bool,
-    /// Auto-push on success
-    pub auto_push: bool,
-    /// Continue workflow on task failure
+    /// Backoff between retries: `base * attempt`. 0 = retry immediately.
+    pub retry_backoff_base_secs: u64,
     pub continue_on_failure: bool,
 }
 
@@ -57,575 +42,397 @@ impl Default for SchedulerConfig {
             max_parallel: 2,
             default_task_timeout: 3600,
             max_retries: 3,
-            retry_backoff_base: 10,
-            poll_interval_ms: 5000,
-            sandbox_enabled: false,
-            default_sandbox_mode: "cubesandbox".to_string(),
-            default_stack: "default".to_string(),
-            default_project: "default".to_string(),
-            auto_commit: false,
-            auto_push: false,
+            retry_backoff_base_secs: 10,
             continue_on_failure: false,
         }
     }
 }
 
-/// Crew scheduler
 pub struct CrewScheduler {
     config: SchedulerConfig,
-    task_storage: Arc<dyn TaskStorage>,
-    template_manager: Arc<TemplateManager>,
-    cubesandbox_client: Option<Arc<CubeSandboxClient>>,
-    containerd_shim: Option<Arc<ContainerdShim>>,
-    active_workflows: Arc<RwLock<HashMap<String, WorkflowState>>>,
-    semaphore: Arc<Semaphore>,
+    storage: Option<Arc<dyn TaskStorage>>,
     repo_root: PathBuf,
+    active_workflows: Arc<RwLock<HashMap<String, WorkflowState>>>,
 }
 
 impl CrewScheduler {
-    pub async fn new(
-        config: SchedulerConfig,
-        task_storage: Arc<dyn TaskStorage>,
-        template_manager: Arc<TemplateManager>,
-        cubesandbox_client: Option<Arc<CubeSandboxClient>>,
-        containerd_shim: Option<Arc<ContainerdShim>>,
-        repo_root: PathBuf,
-    ) -> Result<Self> {
-        let semaphore = Arc::new(Semaphore::new(config.max_parallel));
-
-        Ok(Self {
+    pub fn new(config: SchedulerConfig, repo_root: PathBuf) -> Self {
+        Self {
             config,
-            task_storage,
-            template_manager,
-            cubesandbox_client,
-            containerd_shim,
-            active_workflows: Arc::new(RwLock::new(HashMap::new())),
-            semaphore,
+            storage: None,
             repo_root,
-        })
+            active_workflows: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
-    /// Execute a workflow
-    pub async fn execute_workflow(&self, workflow: CrewWorkflow) -> Result<WorkflowState> {
-        let workflow_id = workflow.id.clone();
-        let name = workflow.definition.name.clone();
+    pub fn with_storage(mut self, storage: Arc<dyn TaskStorage>) -> Self {
+        self.storage = Some(storage);
+        self
+    }
 
-        let mut state = WorkflowState::new(workflow_id.clone(), name);
+    pub async fn get_state(&self, workflow_id: &str) -> Option<WorkflowState> {
+        self.active_workflows.read().await.get(workflow_id).cloned()
+    }
+
+    pub async fn list_states(&self) -> Vec<WorkflowState> {
+        self.active_workflows.read().await.values().cloned().collect()
+    }
+
+    pub async fn execute_workflow(&self, workflow: CrewWorkflow) -> Result<WorkflowState> {
+        self.execute_inner(workflow, None).await
+    }
+
+    pub async fn execute_workflow_cancellable(
+        &self,
+        workflow: CrewWorkflow,
+        cancel_token: CancellationToken,
+    ) -> Result<WorkflowState> {
+        self.execute_inner(workflow, Some(cancel_token)).await
+    }
+
+    async fn execute_inner(&self, workflow: CrewWorkflow, cancel: Option<CancellationToken>) -> Result<WorkflowState> {
+        let workflow_id = workflow.id.clone();
+        let mut state = WorkflowState::new(workflow_id.clone(), workflow.definition.name.clone());
         state.status = WorkflowStatus::Running;
         state.started_at = Some(Utc::now());
-
-        // Register workflow
         self.active_workflows.write().await.insert(workflow_id.clone(), state.clone());
 
-        info!("Starting workflow: {} ({})", workflow.definition.name, workflow_id);
+        let settings = &workflow.definition.settings;
+        let continue_on_failure = settings.continue_on_failure.unwrap_or(self.config.continue_on_failure);
+        let max_parallel = settings
+            .max_parallel
+            .unwrap_or(self.config.max_parallel)
+            .max(1);
 
-        // Create shared sandbox if configured
-        let shared_sandbox_id = if let Some(sandbox_cfg) = workflow.sandbox_config() {
-            if sandbox_cfg.shared {
-                Some(self.create_shared_sandbox(&workflow, &sandbox_cfg).await?)
-            } else {
-                None
+        let mut completed: HashSet<String> = HashSet::new();
+        let mut failed: HashSet<String> = HashSet::new();
+        let mut started: HashSet<String> = HashSet::new();
+        let mut cancelled = false;
+
+        loop {
+            if cancel.as_ref().map(|c| c.is_cancelled()).unwrap_or(false) {
+                cancelled = true;
+                break;
             }
+            if completed.len() + failed.len() >= workflow.definition.tasks.len() {
+                break;
+            }
+            let runnable = workflow.get_runnable_tasks(&completed, &started);
+            if runnable.is_empty() {
+                // Nothing can start: remaining tasks are blocked by failures
+                // (or are already running, which this batch loop never leaves
+                // behind). Mark blocked tasks as failed and finish.
+                for name in workflow.definition.tasks.keys() {
+                    if !completed.contains(name) && !started.contains(name) {
+                        failed.insert(name.clone());
+                        state.failed_tasks.insert(name.clone());
+                    }
+                }
+                break;
+            }
+
+            // Launch one batch (bounded by max_parallel).
+            let batch: Vec<String> = runnable.into_iter().take(max_parallel).collect();
+            for name in &batch {
+                started.insert(name.clone());
+            }
+            let mut handles = Vec::new();
+            for name in batch {
+                let wf = workflow.clone();
+                let cancel = cancel.clone();
+                let repo_root = self.repo_root.clone();
+                let cfg = self.config.clone();
+                let storage = self.storage.clone();
+                handles.push(tokio::spawn(async move {
+                    let result = run_task_with_retries(&cfg, &wf, &name, &repo_root, storage, cancel).await;
+                    (name, result)
+                }));
+            }
+            let mut batch_failed = false;
+            for handle in handles {
+                match handle.await {
+                    Ok((name, Ok(task_id))) => {
+                        completed.insert(name.clone());
+                        state.completed_tasks.insert(name.clone());
+                        state.task_ids.insert(name, task_id);
+                    }
+                    Ok((name, Err(msg))) => {
+                        failed.insert(name.clone());
+                        state.failed_tasks.insert(name.clone());
+                        state.error = Some(format!("task {name} failed: {msg}"));
+                        batch_failed = true;
+                    }
+                    Err(join_err) => {
+                        state.error = Some(format!("task join failed: {join_err}"));
+                        batch_failed = true;
+                    }
+                }
+            }
+            if batch_failed && !continue_on_failure {
+                break;
+            }
+        }
+
+        state.status = if cancelled {
+            WorkflowStatus::Cancelled
+        } else if failed.is_empty() && completed.len() == workflow.definition.tasks.len() {
+            WorkflowStatus::Completed
         } else {
-            None
+            WorkflowStatus::Failed
         };
-
-        // Execute tasks
-        let result = self.execute_workflow_tasks(&workflow, &mut state, shared_sandbox_id).await;
-
-        // Update final state
-        match result {
-            Ok(_) => {
-                state.status = WorkflowStatus::Completed;
-                state.completed_at = Some(Utc::now());
-                info!("Workflow completed: {}", workflow.definition.name);
-            }
-            Err(e) => {
-                state.status = WorkflowStatus::Failed;
-                state.error = Some(e.to_string());
-                state.completed_at = Some(Utc::now());
-                error!("Workflow failed: {}: {}", workflow.definition.name, e);
-            }
-        }
-
-        // Cleanup shared sandbox
-        if let Some(sandbox_id) = shared_sandbox_id {
-            self.cleanup_sandbox(&sandbox_id).await.ok();
-        }
-
-        // Update final state
-        self.active_workflows.write().await.insert(workflow_id.clone(), state.clone());
-
+        state.completed_at = Some(Utc::now());
+        self.active_workflows.write().await.insert(workflow_id, state.clone());
         Ok(state)
     }
 
-    /// Execute workflow tasks respecting dependencies
-    async fn execute_workflow_tasks(
-        &self,
-        workflow: &CrewWorkflow,
-        state: &mut WorkflowState,
-        shared_sandbox_id: Option<String>,
-    ) -> Result<()> {
-        let mut completed = HashSet::new();
-        let mut failed = HashSet::new();
-        let mut pending: HashSet<String> = workflow.task_defs().keys().cloned().collect();
-
-        while !pending.is_empty() {
-            // Get runnable tasks
-            let runnable = workflow.get_runnable_tasks(&completed);
-
-            if runnable.is_empty() {
-                // No runnable tasks but pending not empty - might be a failure
-                if failed.is_empty() {
-                    // Wait a bit and retry
-                    tokio::time::sleep(Duration::from_millis(self.config.poll_interval_ms)).await;
-                    continue;
-                } else {
-                    // Some dependencies failed
-                    if !self.config.continue_on_failure {
-                        return Err(anyhow::anyhow!("Workflow has failed dependencies and continue_on_failure is false"));
-                    }
-                    // Mark blocked tasks as failed
-                    for task_name in &pending {
-                        if !completed.contains(task_name) && !failed.contains(task_name) {
-                            failed.insert(task_name.clone());
-                            state.failed_tasks.insert(task_name.clone());
-                        }
-                    }
-                    break;
-                }
-            }
-
-            // Execute runnable tasks in parallel (respecting semaphore)
-            let mut handles = Vec::new();
-
-            for task_name in runnable {
-                if pending.remove(&task_name) {
-                    let workflow = workflow.clone();
-                    let state = Arc::new(RwLock::new(state.clone()));
-                    let scheduler = self.clone();
-                    let task_name = task_name.clone();
-                    let shared_sandbox_id = shared_sandbox_id.clone();
-
-                    let handle = tokio::spawn(async move {
-                        let permit = scheduler.semaphore.acquire().await.unwrap();
-                        let result = scheduler.execute_single_task(
-                            &workflow,
-                            &task_name,
-                            &state,
-                            shared_sandbox_id,
-                        ).await;
-                        drop(permit);
-                        (task_name, result)
-                    });
-
-                    handles.push(handle);
-                }
-            }
-
-            // Wait for all launched tasks
-            for handle in handles {
-                let (task_name, result) = handle.await?;
-
-                match result {
-                    Ok(task_id) => {
-                        completed.insert(task_name.clone());
-                        state.completed_tasks.insert(task_name.clone());
-                        state.task_ids.insert(task_name.clone(), task_id);
-                        info!("Task completed: {}", task_name);
-                    }
-                    Err(e) => {
-                        failed.insert(task_name.clone());
-                        state.failed_tasks.insert(task_name.clone());
-                        state.error = Some(format!("Task {} failed: {}", task_name, e));
-                        error!("Task failed: {}: {}", task_name, e);
-
-                        if !self.config.continue_on_failure {
-                            return Err(anyhow::anyhow!("Task {} failed: {}", task_name, e));
-                        }
-                    }
-                }
-            }
+    /// Restart recovery: tasks a previous process left in `Running` state in
+    /// durable storage are marked failed/interrupted, so nothing looks alive
+    /// that is not. Returns how many tasks were recovered.
+    pub async fn recover_interrupted(&self) -> Result<u64> {
+        let Some(storage) = &self.storage else {
+            return Ok(0);
+        };
+        let running = storage.get_tasks_by_status(TaskStatus::Running).await?;
+        let mut count = 0u64;
+        for mut task in running {
+            task.status = TaskStatus::Failed;
+            task.error_message = Some("interrupted: process restarted before task finished".to_string());
+            task.completed_at = Some(Utc::now());
+            storage.update_task(&task).await?;
+            count += 1;
         }
+        Ok(count)
+    }
+}
 
-        if failed.is_empty() {
-            Ok(())
-        } else if self.config.continue_on_failure {
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!("Workflow has failed tasks"))
+async fn run_task_with_retries(
+    sched: &SchedulerConfig,
+    workflow: &CrewWorkflow,
+    task_name: &str,
+    repo_root: &PathBuf,
+    storage: Option<Arc<dyn TaskStorage>>,
+    cancel: Option<CancellationToken>,
+) -> std::result::Result<String, String> {
+    let def = workflow
+        .task_def(task_name)
+        .ok_or_else(|| format!("task definition not found: {task_name}"))?;
+    let max_retries = def
+        .max_retries
+        .or(workflow.definition.settings.default_max_retries)
+        .unwrap_or(sched.max_retries);
+    let mut attempt = 0u32;
+    loop {
+        match run_once(sched, workflow, task_name, def, repo_root, &storage, cancel.clone()).await {
+            Ok(id) => return Ok(id),
+            Err(msg) => {
+                if cancel.as_ref().map(|c| c.is_cancelled()).unwrap_or(false) {
+                    return Err("cancelled".to_string());
+                }
+                if attempt >= max_retries {
+                    return Err(msg);
+                }
+                attempt += 1;
+                let backoff = sched.retry_backoff_base_secs.saturating_mul(attempt as u64);
+                if backoff > 0 {
+                    tokio::time::sleep(Duration::from_secs(backoff)).await;
+                }
+            }
         }
     }
+}
 
-    /// Execute a single task
-    async fn execute_single_task(
-        &self,
-        workflow: &CrewWorkflow,
-        task_name: &str,
-        state: &Arc<RwLock<WorkflowState>>,
-        shared_sandbox_id: Option<String>,
-    ) -> Result<String> {
-        let task_def = workflow.definition.tasks.get(task_name)
-            .ok_or_else(|| anyhow::anyhow!("Task definition not found: {}", task_name))?;
+async fn run_once(
+    sched: &SchedulerConfig,
+    workflow: &CrewWorkflow,
+    task_name: &str,
+    def: &CrewTaskDef,
+    repo_root: &PathBuf,
+    storage: &Option<Arc<dyn TaskStorage>>,
+    cancel: Option<CancellationToken>,
+) -> std::result::Result<String, String> {
+    let settings = &workflow.definition.settings;
+    let agent_name = if def.agent.is_empty() {
+        settings.default_agent.clone().unwrap_or_else(|| "claude".to_string())
+    } else {
+        def.agent.clone()
+    };
+    let agent_kind: AgentKind = agent_name
+        .parse()
+        .map_err(|_| format!("unknown agent: {agent_name}"))?;
+    let timeout_secs = def
+        .timeout_seconds
+        .or(settings.default_timeout_seconds)
+        .unwrap_or(sched.default_task_timeout);
 
-        // Create task
-        let mut task = self.create_task_from_def(workflow, task_name, task_def, &shared_sandbox_id).await?;
-
-        // Store task
-        self.task_storage.add_task(&task).await?;
-
-        // Update state
-        state.write().await.running_tasks.insert(task_name.to_string(), task.id.clone());
-
-        // Create runner
-        let runner = self.create_runner(&task, &shared_sandbox_id).await?;
-
-        // Execute
-        let result = timeout(
-            Duration::from_secs(task.timeout_seconds),
-            runner.run(&task, None)
-        ).await;
-
-        let stream_handle = match result {
-            Ok(Ok(handle)) => handle,
-            Ok(Err(e)) => return Err(e.into()),
-            Err(_) => return Err(anyhow::anyhow!("Task timed out after {} seconds", task.timeout_seconds)),
-        };
-
-        // Collect events and update task
-        let final_result = self.collect_task_events(&mut task, stream_handle).await?;
-
-        // Update task status
-        task.status = if final_result.success {
-            TaskStatus::Complete
-        } else {
-            TaskStatus::Failed
-        };
-        task.completed_at = Some(Utc::now());
-        if let Some(error) = final_result.error {
-            task.error_message = Some(error);
+    let mut config = TaskConfig::new(def.prompt.clone(), agent_kind);
+    config.cwd = Some(repo_root.clone());
+    config.timeout_secs = Some(timeout_secs);
+    if let Some(model) = &def.model {
+        config.model = Some(model.clone());
+    }
+    if let Some(binary) = &def.binary {
+        config.binary_path = Some(PathBuf::from(binary));
+    }
+    if let Some(over) = workflow.definition.agents.get(&agent_name) {
+        if config.model.is_none() {
+            config.model = over.model.clone();
         }
-
-        self.task_storage.update_task(&task).await?;
-
-        // Handle git commit if auto-commit enabled
-        if self.config.auto_commit && task.status == TaskStatus::Complete {
-            self.git_commit_task(&task).await?;
-            if self.config.auto_push {
-                self.git_push_task(&task).await?;
+        if over.api_key.is_some() {
+            config.api_key = over.api_key.clone();
+        }
+        if over.base_url.is_some() {
+            config.base_url = over.base_url.clone();
+        }
+        config.extra_args = over.extra_args.clone();
+    }
+    if let Some(stack) = def.stack.clone().or_else(|| settings.default_stack.clone()) {
+        config.stack = stack;
+    }
+    if let Some(project) = def.project.clone().or_else(|| settings.default_project.clone()) {
+        config.project = project;
+    }
+    if workflow.definition.sandbox.is_some() {
+        let mut sandbox = SandboxConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        if let Some(sb) = &workflow.definition.sandbox {
+            if let Some(stack) = &sb.stack {
+                sandbox.stack = stack.clone();
+                sandbox.default_stack = stack.clone();
             }
         }
-
-        // Remove from running
-        state.write().await.running_tasks.remove(task_name);
-
-        Ok(task.id)
+        config.sandbox_config = Some(sandbox);
     }
 
-    /// Create task from workflow task definition
-    async fn create_task_from_def(
-        &self,
-        workflow: &CrewWorkflow,
-        task_name: &str,
-        task_def: &crate::crew::workflow::CrewTaskDef,
-        shared_sandbox_id: &Option<String>,
-    ) -> Result<Task> {
-        let task_id = format!(
-            "{}-{}-{}-{}",
-            Utc::now().format("%Y-%m-%d-%H%M"),
-            task_def.task_type.unwrap_or(TaskType::Generic) as u8,
-            task_name,
-            Uuid::new_v4().to_string()[..8].to_string()
-        );
+    let task_id = format!(
+        "crew-{}-{}-{}",
+        &workflow.id[..workflow.id.len().min(8)],
+        task_name,
+        &Uuid::new_v4().to_string()[..8]
+    );
 
-        let branch_name = format!("tsk/{}", task_id);
-        let source_commit = self.get_current_commit().await?;
-        let source_branch = self.get_current_branch().await?;
-
-        // Create instructions file
-        let instructions_path = self.create_instructions_file(&task_id, &task_def.prompt).await?;
-
-        // Build sandbox config
-        let sandbox_config = self.build_sandbox_config(workflow, task_def, shared_sandbox_id).await?;
-
+    // Durable task record (optional).
+    let mut record: Option<Task> = None;
+    if let Some(storage) = storage {
+        let instructions = write_instructions(&task_id, &def.prompt)?;
         let task = Task {
             id: task_id.clone(),
-            repo_root: self.repo_root.clone(),
+            repo_root: repo_root.clone(),
             name: task_name.to_string(),
-            task_type: task_def.task_type.unwrap_or(TaskType::Generic),
-            priority: task_def.priority.unwrap_or(TaskPriority::Normal),
-            instructions_file: instructions_path,
-            agent: task_def.agent.clone(),
-            status: TaskStatus::Queued,
+            task_type: def.task_type.unwrap_or(TaskType::Generic),
+            priority: def.priority.unwrap_or(TaskPriority::Normal),
+            instructions_file: instructions,
+            agent: agent_name.clone(),
+            status: TaskStatus::Running,
             created_at: Utc::now(),
-            started_at: None,
+            started_at: Some(Utc::now()),
             completed_at: None,
-            branch_name,
+            branch_name: format!("crew/{task_id}"),
             error_message: None,
             blocked_reason: None,
-            source_commit,
-            source_branch: Some(source_branch),
-            stack: task_def.stack.clone().unwrap_or_else(|| self.config.default_stack.clone()),
-            project: task_def.project.clone().unwrap_or_else(|| self.config.default_project.clone()),
+            source_commit: git_output(repo_root, &["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".into()),
+            source_branch: git_output(repo_root, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            stack: config.stack.clone(),
+            project: config.project.clone(),
             copied_repo_path: None,
-            parent_ids: task_def.depends_on.clone(),
+            parent_ids: def.depends_on.clone(),
             child_ids: Vec::new(),
-            interactive: task_def.interactive.unwrap_or(false),
-            sandbox_config: Some(sandbox_config),
+            interactive: def.interactive.unwrap_or(false),
+            sandbox_config: config.sandbox_config.clone(),
             retry_count: 0,
-            max_retries: task_def.max_retries.unwrap_or(self.config.max_retries),
-            timeout_seconds: task_def.timeout_seconds.unwrap_or(self.config.default_task_timeout),
-            tags: task_def.tags.clone().unwrap_or_default(),
+            max_retries: def.max_retries.unwrap_or(sched.max_retries),
+            timeout_seconds: timeout_secs,
+            tags: def.tags.clone().unwrap_or_default(),
             metadata: HashMap::new(),
         };
-
-        Ok(task)
+        storage.add_task(&task).await.map_err(|e| e.to_string())?;
+        record = Some(task);
     }
 
-    /// Create runner for task
-    async fn create_runner(&self, task: &Task, shared_sandbox_id: &Option<String>) -> Result<Arc<dyn crate::runner::AgentRunner>> {
-        let agent_kind = task.agent.parse::<AgentKind>()
-            .map_err(|_| anyhow::anyhow!("Unknown agent: {}", task.agent))?;
+    let result = execute_agent(&config, timeout_secs, cancel).await;
 
-        let base_runner = create_runner(agent_kind);
-
-        // Check if sandbox mode
-        let sandbox_mode = if self.config.sandbox_enabled || shared_sandbox_id.is_some() {
-            match self.config.default_sandbox_mode.as_str() {
-                "cubesandbox" => SandboxMode::CubeSandbox,
-                "docker" => SandboxMode::Docker,
-                "podman" => SandboxMode::Podman,
-                _ => SandboxMode::None,
-            }
-        } else {
-            SandboxMode::None
-        };
-
-        if sandbox_mode == SandboxMode::None {
-            Ok(base_runner)
-        } else {
-            let sandbox_config = SandboxRunnerConfig {
-                mode: sandbox_mode,
-                sandbox_config: task.sandbox_config.clone().unwrap_or_default(),
-                template_manager: self.template_manager.clone(),
-                cubesandbox_client: self.cubesandbox_client.clone(),
-                containerd_shim: self.containerd_shim.clone(),
-            };
-
-            let runner = SandboxRunner::new(base_runner, sandbox_config, agent_kind);
-            Ok(Arc::new(runner))
+    if let (Some(storage), Some(mut task)) = (storage, record) {
+        task.status = if result.is_ok() { TaskStatus::Complete } else { TaskStatus::Failed };
+        task.completed_at = Some(Utc::now());
+        if let Err(msg) = &result {
+            task.error_message = Some(msg.clone());
         }
+        let _ = storage.update_task(&task).await;
     }
 
-    /// Create instructions file for task
-    async fn create_instructions_file(&self, task_id: &str, prompt: &str) -> Result<PathBuf> {
-        let dir = std::env::temp_dir().join("bkgcrewcli").join("instructions").join(task_id);
-        std::fs::create_dir_all(&dir)?;
-        let file_path = dir.join("prompt.md");
+    result.map(|_| task_id)
+}
 
-        let content = format!(
-            "# Task Instructions\n\n{}\n\n---\nTask ID: {}\nGenerated: {}\n",
-            prompt, task_id, Utc::now().to_rfc3339()
-        );
-
-        std::fs::write(&file_path, content)?;
-        Ok(file_path)
-    }
-
-    /// Build sandbox config for task
-    async fn build_sandbox_config(
-        &self,
-        workflow: &CrewWorkflow,
-        task_def: &crate::crew::workflow::CrewTaskDef,
-        shared_sandbox_id: &Option<String>,
-    ) -> Result<SandboxConfig> {
-        let mut config = SandboxConfig::default();
-
-        // Apply workflow sandbox config
-        if let Some(wf_sandbox) = workflow.sandbox_config() {
-            config.enabled = true;
-            if let Some(stack) = &wf_sandbox.stack {
-                config.default_stack = stack.clone();
-            }
-            if let Some(resources) = &wf_sandbox.resources {
-                config.resources = resources.clone();
-            }
-            if let Some(security) = &wf_sandbox.security {
-                config.security = security.clone();
-            }
-        }
-
-        // Override with task-specific
-        if let Some(stack) = &task_def.stack {
-            config.default_stack = stack.clone();
-        }
-
-        // If shared sandbox, use its ID
-        if let Some(sandbox_id) = shared_sandbox_id {
-            config.security.network_isolation = false; // Allow inter-task communication
-            // The sandbox ID would be passed via env var
-        }
-
-        Ok(config)
-    }
-
-    /// Create shared sandbox for workflow
-    async fn create_shared_sandbox(
-        &self,
-        workflow: &CrewWorkflow,
-        sandbox_cfg: &CrewSandboxConfig,
-    ) -> Result<String> {
-        // This would create a long-running sandbox via CubeSandbox
-        // For now, return a placeholder
-        let sandbox_id = format!("shared-{}", Uuid::new_v4().to_string()[..8].to_string());
-        info!("Created shared sandbox: {}", sandbox_id);
-        Ok(sandbox_id)
-    }
-
-    /// Cleanup sandbox
-    async fn cleanup_sandbox(&self, sandbox_id: &str) -> Result<()> {
-        info!("Cleaning up sandbox: {}", sandbox_id);
-        if let Some(client) = &self.cubesandbox_client {
-            client.destroy_sandbox(sandbox_id).await?;
-        }
-        Ok(())
-    }
-
-    /// Collect events from task execution stream
-    async fn collect_task_events(
-        &self,
-        task: &mut Task,
-        mut stream_handle: crate::process::StreamHandle,
-    ) -> Result<TaskExecutionResult> {
-        use crate::event::Event;
-        use futures::StreamExt;
-
-        let mut stdout = String::new();
-        let mut stderr = String::new();
+async fn execute_agent(config: &TaskConfig, timeout_secs: u64, cancel: Option<CancellationToken>) -> std::result::Result<(), String> {
+    let run = async {
+        let mut handle = crate::run_task_with_cancel(config, cancel)
+            .await
+            .map_err(|e: Error| e.to_string())?;
         let mut success = false;
-        let mut error_msg = None;
-        let mut tokens_used = 0u64;
-        let mut cost_usd = 0.0f64;
-        let mut api_calls = 0u64;
-
-        while let Some(event) = stream_handle.stream.next().await {
-            match event {
-                Ok(Event::TextDelta(delta)) => {
-                    stdout.push_str(&delta.text);
-                }
-                Ok(Event::Message(msg)) => {
-                    if msg.role == crate::event::Role::Assistant {
-                        stdout.push_str(&msg.text);
+        let mut saw_result = false;
+        let mut error_msg: Option<String> = None;
+        while let Some(item) = handle.stream.next().await {
+            match item {
+                Ok(Event::Result(r)) => {
+                    saw_result = true;
+                    success = r.success;
+                    if !r.success && !r.text.is_empty() {
+                        error_msg = Some(r.text);
                     }
                 }
-                Ok(Event::ToolStart(_)) => {
-                    api_calls += 1;
+                Ok(Event::Error(e)) => {
+                    error_msg = Some(e.message);
                 }
-                Ok(Event::UsageDelta(usage)) => {
-                    if let Some(input) = usage.usage.input_tokens {
-                        tokens_used += input as u64;
-                    }
-                    if let Some(output) = usage.usage.output_tokens {
-                        tokens_used += output as u64;
-                    }
-                    if let Some(cost) = usage.usage.cost_usd {
-                        cost_usd += cost;
-                    }
-                }
-                Ok(Event::Result(result)) => {
-                    success = result.success;
-                    stdout.push_str(&result.text);
-                    if let Some(cost) = result.total_cost_usd {
-                        cost_usd = cost;
-                    }
-                    if let Some(usage) = result.usage {
-                        if let Some(input) = usage.input_tokens {
-                            tokens_used += input as u64;
-                        }
-                        if let Some(output) = usage.output_tokens {
-                            tokens_used += output as u64;
-                        }
-                    }
-                }
-                Ok(Event::Error(err)) => {
-                    stderr.push_str(&err.message);
-                    error_msg = Some(err.message);
-                }
+                Ok(_) => {}
                 Err(e) => {
-                    stderr.push_str(&e.to_string());
                     error_msg = Some(e.to_string());
                 }
             }
         }
-
-        Ok(TaskExecutionResult {
-            success,
-            stdout,
-            stderr,
-            error: error_msg,
-            tokens_used,
-            cost_usd,
-            api_calls,
-        })
-    }
-
-    /// Git commit for task
-    async fn git_commit_task(&self, task: &Task) -> Result<()> {
-        use crate::git::GitManager;
-        let git = GitManager::new(self.repo_root.clone());
-        git.checkout_branch(&task.branch_name).await?;
-        git.add_all().await?;
-        let message = format!("{}: {}", task.task_type.to_string().to_lowercase(), task.name);
-        git.commit(&message).await?;
-        Ok(())
-    }
-
-    /// Git push for task
-    async fn git_push_task(&self, task: &Task) -> Result<()> {
-        use crate::git::GitManager;
-        let git = GitManager::new(self.repo_root.clone());
-        git.push_branch(&task.branch_name).await?;
-        Ok(())
-    }
-
-    /// Get current git commit
-    async fn get_current_commit(&self) -> Result<String> {
-        use crate::git::GitManager;
-        let git = GitManager::new(self.repo_root.clone());
-        git.get_current_commit().await
-    }
-
-    /// Get current git branch
-    async fn get_current_branch(&self) -> Result<String> {
-        use crate::git::GitManager;
-        let git = GitManager::new(self.repo_root.clone());
-        git.get_current_branch().await
-    }
-}
-
-impl Clone for CrewScheduler {
-    fn clone(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            task_storage: self.task_storage.clone(),
-            template_manager: self.template_manager.clone(),
-            cubesandbox_client: self.cubesandbox_client.clone(),
-            containerd_shim: self.containerd_shim.clone(),
-            active_workflows: self.active_workflows.clone(),
-            semaphore: self.semaphore.clone(),
-            repo_root: self.repo_root.clone(),
+        if saw_result && success {
+            Ok(())
+        } else {
+            Err(error_msg.unwrap_or_else(|| "agent did not report success".to_string()))
         }
+    };
+    match tokio::time::timeout(Duration::from_secs(timeout_secs), run).await {
+        Ok(r) => r,
+        Err(_) => Err(format!("task timed out after {timeout_secs} seconds")),
     }
 }
 
-/// Task execution result
+fn write_instructions(task_id: &str, prompt: &str) -> std::result::Result<PathBuf, String> {
+    let dir = std::env::temp_dir().join("bkgcrewcli").join("instructions").join(task_id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("prompt.md");
+    let content = format!("# Task Instructions\n\n{prompt}\n\n---\nTask ID: {task_id}\nGenerated: {}\n", Utc::now().to_rfc3339());
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn git_output(repo_root: &PathBuf, args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(args)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// Outcome summary of one task execution (used by tests and callers that
+/// collect events themselves).
 #[derive(Debug, Clone)]
 pub struct TaskExecutionResult {
     pub success: bool,
-    pub stdout: String,
-    pub stderr: String,
     pub error: Option<String>,
-    pub tokens_used: u64,
-    pub cost_usd: f64,
-    pub api_calls: u64,
 }

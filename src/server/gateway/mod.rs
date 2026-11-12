@@ -45,6 +45,39 @@ impl GatewayState {
     }
 }
 
+/// One admitted send: lane reservation (already sent-counted) plus the
+/// model permit. Both are RAII guards — dropping them frees the slots.
+pub struct AdmittedSend {
+    pub reservation: crate::admission::Reservation,
+    pub permit: crate::admission::ModelPermit,
+}
+
+/// Acquire admission for one upstream send. Limits come from the provider's
+/// gateway config (`rpmLimit`, `modelMaxConcurrency`, `queueMaxWaitMs`);
+/// unconfigured providers get a single effectively-unlimited lane, so the
+/// single-key behaviour stays compatible while still passing the pool.
+pub async fn admit(cfg: &GatewayConfig, provider_name: &str, model: &str, key_id: &str) -> Result<AdmittedSend, String> {
+    let (rpm, concurrency, wait_ms) = cfg
+        .providers
+        .get(provider_name)
+        .map(|p| (p.rpm_limit.unwrap_or(0), p.model_max_concurrency.unwrap_or(0), p.queue_max_wait_ms.unwrap_or(2000)))
+        .unwrap_or((0, 0, 2000));
+    let rpm = if rpm == 0 { 1_000_000 } else { rpm };
+    let (reservation, permit) = crate::admission::global_registry()
+        .acquire(provider_name, model, key_id, rpm, concurrency, std::time::Duration::from_millis(wait_ms))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(AdmittedSend { reservation, permit })
+}
+
+/// Report an upstream status back to the admission lanes (429 cooldown).
+pub fn report_upstream_status(provider_name: &str, model: &str, key_id: &str, status: u16, retry_after: Option<&str>) {
+    if status == 429 {
+        let cooldown = crate::admission::parse_retry_after(retry_after, std::time::Duration::from_secs(60));
+        crate::admission::global_registry().report_rate_limited(provider_name, model, key_id, cooldown);
+    }
+}
+
 pub fn gateway_router(state: GatewayState) -> Router {
     let st = Arc::new(state);
     Router::new()

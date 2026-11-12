@@ -14,9 +14,11 @@
 //! # }
 //! ```
 
+pub mod admission;
 pub mod agents;
 pub mod cognition;
 pub mod config;
+pub mod crew;
 pub mod error;
 pub mod event;
 pub mod keystore;

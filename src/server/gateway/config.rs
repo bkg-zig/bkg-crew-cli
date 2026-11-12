@@ -153,6 +153,16 @@ pub struct GatewayProviderConfig {
     pub account_id: Option<String>,
     #[serde(default)]
     pub models: Vec<String>,
+    /// Per-key rate limit for the admission lane (requests per 60s window).
+    /// None/0 = effectively unlimited (single-lane pool still applies).
+    #[serde(default)]
+    pub rpm_limit: Option<u32>,
+    /// Model-wide in-flight cap enforced by the admission governor. 0 = unlimited.
+    #[serde(default)]
+    pub model_max_concurrency: Option<u32>,
+    /// Max time a send may wait in the admission queue (ms). Default 2000.
+    #[serde(default)]
+    pub queue_max_wait_ms: Option<u64>,
     #[serde(default)]
     pub agents_models: Option<Vec<String>>,
     #[serde(default)]
